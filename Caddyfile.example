@@ -1,0 +1,21 @@
+# Reference Caddyfile block for Watchlistr
+# Copy and adapt this block into your server's global Caddyfile:
+
+watchlistr.example.com {
+    # Enable modern response compression (Zstd & Gzip)
+    encode zstd gzip
+
+    # Path to static frontend dist/ files inside Caddy container volume
+    root * /srv/watchlistr
+
+    # Reverse proxy API requests to the watchlistr-api Docker container
+    handle /api/* {
+        reverse_proxy watchlistr-api:3000
+    }
+
+    # Serve static frontend SPA assets with index.html fallback
+    handle {
+        try_files {path} /index.html
+        file_server
+    }
+}
