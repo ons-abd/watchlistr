@@ -93,7 +93,7 @@ watchlistr.example.com {
     root * /srv/watchlistr
 
     handle /api/* {
-        reverse_proxy 127.0.0.1:3000
+        reverse_proxy ttvdb-proxy:3000
     }
 
     handle {

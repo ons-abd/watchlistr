@@ -8,9 +8,9 @@ watchlistr.example.com {
     # Path to static frontend dist/ files inside Caddy container volume
     root * /srv/watchlistr
 
-    # Reverse proxy API requests to the watchlistr-api Docker container
+    # Reverse proxy TVDB API requests to the ttvdb-proxy Docker container
     handle /api/* {
-        reverse_proxy watchlistr-api:3000
+        reverse_proxy ttvdb-proxy:3000
     }
 
     # Serve static frontend SPA assets with index.html fallback

@@ -1,11 +1,11 @@
 version: '3.8'
 
 services:
-  watchlistr-api:
+  ttvdb-proxy:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: watchlistr-api
+    container_name: ttvdb-proxy
     restart: unless-stopped
     ports:
       - "3000:3000"
