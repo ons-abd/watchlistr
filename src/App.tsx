@@ -760,6 +760,14 @@ function App() {
     });
 
     setFollowedListsMap(parsedMap);
+
+    Object.values(parsedMap).forEach(userLists => {
+      userLists.forEach(list => {
+        if (list.items.some(x => x.title === 'Loading from the TVDB...' || !x.poster || (x.type === 'movie' && !x.director) || (x.type === 'tv' && !x.creator))) {
+          resolveListMetadata(list.id, list.items);
+        }
+      });
+    });
   };
 
   useEffect(() => {
