@@ -1440,6 +1440,74 @@ function App() {
     return years;
   };
 
+  const renderListCardFooter = (items: Media[]) => {
+    if (!items || items.length === 0) {
+      return (
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', fontStyle: 'italic', padding: '4px 0' }}>
+          Empty list
+        </div>
+      );
+    }
+
+    const maxPreviewPosters = 5;
+    const showOverflow = items.length > maxPreviewPosters;
+    const visibleItems = showOverflow ? items.slice(0, maxPreviewPosters - 1) : items.slice(0, maxPreviewPosters);
+    const remainingCount = items.length - visibleItems.length;
+
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden', width: '100%' }}>
+        {visibleItems.map((item, idx) => (
+          <div
+            key={item.id || `${item.title}-${idx}`}
+            style={{
+              width: '36px',
+              height: '52px',
+              borderRadius: 'var(--radius-sm)',
+              overflow: 'hidden',
+              backgroundColor: 'var(--bg-tertiary)',
+              flexShrink: 0,
+              border: '1px solid var(--border-color)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+            title={item.title}
+          >
+            {item.poster ? (
+              <img src={item.poster} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-tertiary)', textAlign: 'center', padding: '2px' }}>
+                {item.type === 'tv' ? <Tv size={14} /> : <Film size={14} />}
+              </span>
+            )}
+          </div>
+        ))}
+
+        {showOverflow && (
+          <div
+            style={{
+              width: '36px',
+              height: '52px',
+              borderRadius: 'var(--radius-sm)',
+              backgroundColor: 'var(--bg-tertiary)',
+              border: '1px solid var(--border-color)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '0.75rem',
+              fontWeight: 750,
+              color: 'var(--accent-color)',
+              flexShrink: 0
+            }}
+            title={`${remainingCount} more item${remainingCount === 1 ? '' : 's'}`}
+          >
+            +{remainingCount}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const isSocialList = selectedListId ? selectedListId.startsWith('social:') : false;
   let currentList: MediaList | undefined;
   let socialProfile: { name?: string; picture?: string; pubkey?: string } | undefined;
@@ -1787,17 +1855,13 @@ function App() {
                               )}
                               <span className="profile-name" style={{ fontWeight: 600, fontSize: '0.85rem' }}>{displayName}</span>
                             </div>
-                            <span className="column-count">{list.items.length} item{list.items.length === 1 ? '' : 's'}</span>
                           </div>
 
                           <h3 className="list-card-title" style={{ marginTop: '0.5rem' }}>{renderListTitle(list)}</h3>
                           <p className="list-card-desc">{list.description || 'No description provided.'}</p>
 
                           <div className="list-card-footer">
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                              {list.createdAt ? new Date(list.createdAt * 1000).toLocaleDateString() : ''}
-                            </span>
-                            <span style={{ fontWeight: 600, color: 'var(--accent-color)' }}>Inspect List →</span>
+                            {renderListCardFooter(list.items)}
                           </div>
                         </div>
                       );
@@ -1860,16 +1924,11 @@ function App() {
                     className="list-card"
                     onClick={() => setSelectedListId(list.id)}
                   >
-                    <div className="list-card-header">
-                      <span className="column-count">{list.items.length} item{list.items.length === 1 ? '' : 's'}</span>
-                    </div>
-
-                    <h3 className="list-card-title">{renderListTitle(list)}</h3>
+                    <h3 className="list-card-title" style={{ marginTop: '0.25rem' }}>{renderListTitle(list)}</h3>
                     <p className="list-card-desc">{list.description || 'No description provided.'}</p>
 
                     <div className="list-card-footer">
-                      <span>{list.items.length} item{list.items.length === 1 ? '' : 's'}</span>
-                      <span style={{ fontWeight: 600, color: 'var(--accent-color)' }}>Open List →</span>
+                      {renderListCardFooter(list.items)}
                     </div>
                   </div>
                 ))}
@@ -1977,16 +2036,11 @@ function App() {
                                     className="list-card"
                                     onClick={() => setSelectedListId(list.id)}
                                   >
-                                    <div className="list-card-header">
-                                      <span className="column-count">{list.items.length} item{list.items.length === 1 ? '' : 's'}</span>
-                                    </div>
-
-                                    <h3 className="list-card-title">{renderListTitle(list)}</h3>
+                                    <h3 className="list-card-title" style={{ marginTop: '0.25rem' }}>{renderListTitle(list)}</h3>
                                     <p className="list-card-desc">{list.description || 'No description provided.'}</p>
 
                                     <div className="list-card-footer">
-                                      <span>{list.items.length} item{list.items.length === 1 ? '' : 's'}</span>
-                                      <span style={{ fontWeight: 600, color: 'var(--accent-color)' }}>Inspect List →</span>
+                                      {renderListCardFooter(list.items)}
                                     </div>
                                   </div>
                                 ))}
