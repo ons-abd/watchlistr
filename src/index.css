@@ -1353,9 +1353,25 @@ textarea.input-field {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 1rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 0.25rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid transparent;
+  border-radius: var(--radius-md);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.following-user-header.expanded {
+  border-bottom-color: var(--border-color);
+  margin-bottom: 0.5rem;
+}
+
+.following-user-header.clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.following-user-header.clickable:hover {
+  background-color: var(--bg-secondary);
 }
 
 .profile-badge {

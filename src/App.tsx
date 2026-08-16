@@ -18,7 +18,9 @@ import {
   Globe,
   Smartphone,
   Key,
-  Copy
+  Copy,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import {
   NostrService,
@@ -215,6 +217,16 @@ function App() {
     isOpen: boolean;
     pubkey: string | null;
   }>({ isOpen: false, pubkey: null });
+
+  // Following tab collapse/expand state
+  const [expandedFollowingUsers, setExpandedFollowingUsers] = useState<Record<string, boolean>>({});
+
+  const toggleFollowedUserExpand = (pk: string) => {
+    setExpandedFollowingUsers(prev => ({
+      ...prev,
+      [pk]: !prev[pk]
+    }));
+  };
 
   // Search input state
   const [searchQuery, setSearchQuery] = useState('');
@@ -1912,19 +1924,16 @@ function App() {
                     const profile = followedProfiles[pk];
                     const userLists = followedListsMap[pk] || [];
                     const displayName = profile?.name || `${pk.substring(0, 8)}...${pk.substring(pk.length - 4)}`;
+                    const isExpanded = Boolean(expandedFollowingUsers[pk]);
 
                     return (
                       <div key={pk} className="following-user-section">
-                        <div className="following-user-header">
-                          <div
-                            className="profile-badge clickable"
-                            style={{ cursor: 'pointer' }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setAuthorProfileModal({ isOpen: true, pubkey: pk });
-                            }}
-                            title={`View ${displayName}'s profile`}
-                          >
+                        <div
+                          className={`following-user-header clickable ${isExpanded ? 'expanded' : ''}`}
+                          onClick={() => toggleFollowedUserExpand(pk)}
+                          title={isExpanded ? "Click to collapse watchlists" : "Click to expand watchlists"}
+                        >
+                          <div className="profile-badge">
                             {profile?.picture ? (
                               <img src={profile.picture} alt={displayName} className="profile-avatar" />
                             ) : (
@@ -1936,40 +1945,53 @@ function App() {
                             </div>
                           </div>
 
-                          <button
-                            className="btn btn-action-icon btn-delete"
-                            onClick={() => handleUnfollowUser(pk)}
-                            title="Unfollow user"
-                          >
-                            <UserMinus size={16} /> Unfollow
-                          </button>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <button
+                              className="btn btn-action-icon btn-delete"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleUnfollowUser(pk);
+                              }}
+                              title="Unfollow user"
+                            >
+                              <UserMinus size={16} /> Unfollow
+                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                              <span>{userLists.length} list{userLists.length === 1 ? '' : 's'}</span>
+                              {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                            </div>
+                          </div>
                         </div>
 
-                        {userLists.length === 0 ? (
-                          <div style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', padding: '0.5rem 0' }}>
-                            No public <code>kind:30016</code> lists found for this profile on connected relays.
-                          </div>
-                        ) : (
-                          <div className="lists-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
-                            {userLists.map(list => (
-                              <div
-                                key={list.id}
-                                className="list-card"
-                                onClick={() => setSelectedListId(list.id)}
-                              >
-                                <div className="list-card-header">
-                                  <span className="column-count">{list.items.length} item{list.items.length === 1 ? '' : 's'}</span>
-                                </div>
-
-                                <h3 className="list-card-title">{renderListTitle(list)}</h3>
-                                <p className="list-card-desc">{list.description || 'No description provided.'}</p>
-
-                                <div className="list-card-footer">
-                                  <span>{list.items.length} item{list.items.length === 1 ? '' : 's'}</span>
-                                  <span style={{ fontWeight: 600, color: 'var(--accent-color)' }}>Inspect List →</span>
-                                </div>
+                        {isExpanded && (
+                          <div style={{ marginTop: '0.75rem' }}>
+                            {userLists.length === 0 ? (
+                              <div style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', padding: '0.5rem 0' }}>
+                                No public <code>kind:30016</code> lists found for this profile on connected relays.
                               </div>
-                            ))}
+                            ) : (
+                              <div className="lists-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+                                {userLists.map(list => (
+                                  <div
+                                    key={list.id}
+                                    className="list-card"
+                                    onClick={() => setSelectedListId(list.id)}
+                                  >
+                                    <div className="list-card-header">
+                                      <span className="column-count">{list.items.length} item{list.items.length === 1 ? '' : 's'}</span>
+                                    </div>
+
+                                    <h3 className="list-card-title">{renderListTitle(list)}</h3>
+                                    <p className="list-card-desc">{list.description || 'No description provided.'}</p>
+
+                                    <div className="list-card-footer">
+                                      <span>{list.items.length} item{list.items.length === 1 ? '' : 's'}</span>
+                                      <span style={{ fontWeight: 600, color: 'var(--accent-color)' }}>Inspect List →</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
