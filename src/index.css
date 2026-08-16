@@ -1364,12 +1364,38 @@ textarea.input-field {
   gap: 0.75rem;
 }
 
+.profile-badge.clickable {
+  padding: 4px 8px;
+  margin: -4px -8px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.profile-badge.clickable:hover {
+  background-color: var(--bg-tertiary);
+  border-color: var(--accent-color);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.25);
+}
+
+.profile-badge.clickable:hover .profile-name {
+  color: var(--accent-color);
+}
+
+.profile-badge.clickable:hover .profile-avatar,
+.profile-badge.clickable:hover .profile-avatar-fallback {
+  transform: scale(1.1);
+  box-shadow: 0 0 8px var(--accent-color);
+  border-color: var(--accent-color);
+}
+
 .profile-avatar {
   width: 40px;
   height: 40px;
   border-radius: 50%;
   object-fit: cover;
   border: 2px solid var(--accent-color);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
 }
 
 .profile-avatar-fallback {
@@ -1383,12 +1409,14 @@ textarea.input-field {
   justify-content: center;
   font-weight: bold;
   border: 2px solid var(--accent-color);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
 }
 
 .profile-name {
   font-weight: 700;
   font-size: 1.05rem;
   color: var(--text-primary);
+  transition: color var(--transition-fast);
 }
 
 .profile-npub {
@@ -1407,6 +1435,21 @@ textarea.input-field {
   border-radius: var(--radius-md);
   margin-bottom: 1rem;
   font-size: 0.9rem;
+}
+
+.social-author-banner.clickable {
+  cursor: pointer;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.social-author-banner.clickable:hover {
+  background-color: var(--bg-tertiary);
+  border-color: var(--accent-color);
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
+}
+
+.social-author-banner.clickable:hover strong {
+  color: var(--accent-color);
 }
 
 /* Auth Card & NIP-46 Multi-Tab Styles */

@@ -189,17 +189,32 @@ function App() {
   const activeWatched = lists.find(x => x.id === activeWatchedId) || { items: [] };
   const watchedList = activeWatched.items;
 
-  // Social & Follows state (kind:10016)
-  const [activeHubTab, setActiveHubTab] = useState<'my-lists' | 'following'>('my-lists');
+  // Social & Follows & Explore state
+  const [activeHubTab, setActiveHubTab] = useState<'my-lists' | 'explore' | 'following'>('my-lists');
   const [followedPubkeys, setFollowedPubkeys] = useState<string[]>(() => {
     const saved = localStorage.getItem('watchlistr_followed_pubkeys');
     return saved ? JSON.parse(saved) : [];
   });
   const [followedProfiles, setFollowedProfiles] = useState<Record<string, { name?: string; picture?: string }>>({});
   const [followedListsMap, setFollowedListsMap] = useState<Record<string, MediaList[]>>({});
+
+  // Explore tab state
+  const [exploreLists, setExploreLists] = useState<MediaList[]>([]);
+  const [exploreProfiles, setExploreProfiles] = useState<Record<string, { name?: string; picture?: string }>>({});
+  const [isExploreLoading, setIsExploreLoading] = useState(false);
+  const [isExploreLoadingMore, setIsExploreLoadingMore] = useState(false);
+  const [hasMoreExplore, setHasMoreExplore] = useState(true);
+  const [exploreUntil, setExploreUntil] = useState<number | undefined>(undefined);
+  const exploreObserverRef = useRef<HTMLDivElement | null>(null);
   const [isFollowModalOpen, setIsFollowModalOpen] = useState(false);
   const [followInputKey, setFollowInputKey] = useState('');
   const [followError, setFollowError] = useState<string | null>(null);
+
+  // Author profile summary modal state
+  const [authorProfileModal, setAuthorProfileModal] = useState<{
+    isOpen: boolean;
+    pubkey: string | null;
+  }>({ isOpen: false, pubkey: null });
 
   // Search input state
   const [searchQuery, setSearchQuery] = useState('');
@@ -770,6 +785,160 @@ function App() {
     });
   };
 
+  // Load global explore lists (kind:30016)
+  const loadExploreData = async (isInitial: boolean = false) => {
+    if (!nostrServiceRef.current) return;
+    if (isInitial) {
+      setIsExploreLoading(true);
+    } else {
+      if (isExploreLoadingMore || !hasMoreExplore) return;
+      setIsExploreLoadingMore(true);
+    }
+
+    try {
+      const untilParam = isInitial ? undefined : exploreUntil;
+      const remoteEvents = await nostrServiceRef.current.fetchExploreLists(20, untilParam);
+
+      if (remoteEvents.length === 0) {
+        setHasMoreExplore(false);
+        setIsExploreLoading(false);
+        setIsExploreLoadingMore(false);
+        return;
+      }
+
+      // Track oldest created_at for pagination
+      const oldestTimestamp = Math.min(...remoteEvents.map(e => e.created_at));
+      setExploreUntil(oldestTimestamp - 1);
+
+      // Collect pubkeys and fetch profiles
+      const allPubkeys = remoteEvents.map(e => e.pubkey).filter((pk): pk is string => Boolean(pk));
+      const pubkeysToFetch = Array.from(new Set(allPubkeys)).filter(
+        pk => !exploreProfiles[pk] && !followedProfiles[pk]
+      );
+
+      pubkeysToFetch.forEach(async (pk) => {
+        const metaEvent = await nostrServiceRef.current?.fetchUserProfile(pk);
+        if (metaEvent) {
+          try {
+            const meta = JSON.parse(metaEvent.content);
+            setExploreProfiles(prev => ({
+              ...prev,
+              [pk]: {
+                name: meta.display_name || meta.name || meta.username || `${pk.substring(0, 8)}...`,
+                picture: meta.picture
+              }
+            }));
+          } catch (e) {}
+        }
+      });
+
+      const newLists: MediaList[] = [];
+      remoteEvents.forEach(event => {
+        const pk = event.pubkey || '';
+        if (!pk) return;
+        if (nostrUser?.pubkey && pk === nostrUser.pubkey) return;
+        const dTag = event.tags.find(t => t[0] === 'd')?.[1] || 'watchlist:default';
+        const titleTag = event.tags.find(t => t[0] === 'title')?.[1] || dTag;
+        const descTag = event.tags.find(t => t[0] === 'description')?.[1] || '';
+        const isWatchlist = dTag.startsWith('watchlist:') || dTag === 'watchlist';
+        const type: 'watchlist' | 'watched' = isWatchlist ? 'watchlist' : 'watched';
+
+        // Filter out to-watch / watchlist lists (keep ONLY watched lists)
+        if (type !== 'watched') return;
+
+        const listId = `social:${pk}:${dTag}`;
+
+        const items: Media[] = event.tags
+          .filter(t => t[0] === 'i')
+          .map(t => {
+            const identifier = t[1] || '';
+            const datestamp = t[3] || '';
+            const ratingStr = t[4] || '';
+
+            let mediaType: 'movie' | 'tv' = 'movie';
+            let mediaId = identifier;
+
+            if (identifier.startsWith('ttvdb:')) {
+              const parts = identifier.split(':');
+              mediaType = parts[1] === 'series' ? 'tv' : 'movie';
+              mediaId = `${mediaType}-${parts[2]}`;
+            }
+
+            const ratingNum = parseFloat(ratingStr);
+            return {
+              id: mediaId,
+              title: 'Loading from the TVDB...',
+              year: datestamp ? datestamp.split('-')[0] : '',
+              type: mediaType,
+              poster: '',
+              genres: [],
+              watchedDate: datestamp || undefined,
+              userRating: isNaN(ratingNum) ? undefined : ratingNum
+            };
+          });
+
+        // Filter out empty lists
+        if (items.length === 0) return;
+
+        newLists.push({
+          id: listId,
+          title: cleanListTitle(titleTag),
+          description: descTag,
+          type,
+          items,
+          createdAt: event.created_at
+        });
+      });
+
+      setExploreLists(prev => {
+        const existingIds = new Set(prev.map(l => l.id));
+        const filteredNew = newLists.filter(l => !existingIds.has(l.id));
+        const combined = isInitial ? newLists : [...prev, ...filteredNew];
+        return combined.sort((a, b) => b.createdAt - a.createdAt);
+      });
+
+      // Trigger TVDB metadata resolution for new explore items
+      newLists.forEach(list => {
+        if (list.items.some(x => x.title === 'Loading from the TVDB...' || !x.poster || (x.type === 'movie' && !x.director) || (x.type === 'tv' && !x.creator))) {
+          resolveListMetadata(list.id, list.items);
+        }
+      });
+
+      if (remoteEvents.length < 20) {
+        setHasMoreExplore(false);
+      }
+    } catch (err) {
+      console.error("Error loading explore lists:", err);
+    } finally {
+      setIsExploreLoading(false);
+      setIsExploreLoadingMore(false);
+    }
+  };
+
+  // IntersectionObserver for infinite scrolling in Explore tab
+  useEffect(() => {
+    if (activeHubTab !== 'explore') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMoreExplore && !isExploreLoading && !isExploreLoadingMore) {
+          loadExploreData(false);
+        }
+      },
+      { threshold: 0.1, rootMargin: '300px' }
+    );
+
+    const currentRef = exploreObserverRef.current;
+    if (currentRef) {
+      observer.observe(currentRef);
+    }
+
+    return () => {
+      if (currentRef) observer.unobserve(currentRef);
+      observer.disconnect();
+    };
+  }, [activeHubTab, hasMoreExplore, isExploreLoading, isExploreLoadingMore, exploreUntil]);
+
   useEffect(() => {
     if (followedPubkeys.length > 0 && nostrServiceRef.current) {
       loadFollowedData(followedPubkeys);
@@ -936,6 +1105,17 @@ function App() {
       });
       return changed ? updated : prev;
     });
+
+    setExploreLists(prev => prev.map(list => {
+      if (list.id !== listId) return list;
+      return {
+        ...list,
+        items: list.items.map(item => {
+          const found = resolved.find(r => r.id === item.id);
+          return found || item;
+        })
+      };
+    }));
   };
 
   const createNewList = (e: React.FormEvent) => {
@@ -1255,12 +1435,13 @@ function App() {
   if (isSocialList && selectedListId) {
     const parts = selectedListId.split(':');
     const pubkey = parts[1];
-    const userLists = followedListsMap[pubkey] || [];
-    currentList = userLists.find(x => x.id === selectedListId);
+    const userLists = followedListsMap[pubkey] || exploreLists.filter(l => l.id.startsWith(`social:${pubkey}:`));
+    currentList = userLists.find(x => x.id === selectedListId) || exploreLists.find(x => x.id === selectedListId);
+    const profile = followedProfiles[pubkey] || exploreProfiles[pubkey];
     socialProfile = {
       pubkey,
-      name: followedProfiles[pubkey]?.name || `${pubkey.substring(0, 8)}...`,
-      picture: followedProfiles[pubkey]?.picture
+      name: profile?.name || `${pubkey.substring(0, 8)}...`,
+      picture: profile?.picture
     };
   } else {
     currentList = lists.find(x => x.id === selectedListId);
@@ -1513,6 +1694,17 @@ function App() {
               My Lists ({lists.length})
             </button>
             <button
+              className={`hub-tab ${activeHubTab === 'explore' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveHubTab('explore');
+                if (exploreLists.length === 0 && !isExploreLoading) {
+                  loadExploreData(true);
+                }
+              }}
+            >
+              <Globe size={16} /> Explore
+            </button>
+            <button
               className={`hub-tab ${activeHubTab === 'following' ? 'active' : ''}`}
               onClick={() => setActiveHubTab('following')}
             >
@@ -1520,7 +1712,104 @@ function App() {
             </button>
           </div>
 
-          {activeHubTab === 'my-lists' ? (
+          {activeHubTab === 'explore' ? (
+            <>
+              {/* Explore Feed Section */}
+              <div className="hub-title-row">
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800 }}>Explore Public Watchlists</h2>
+                  <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                    Discover recently published media lists (<code>kind:30016</code>) from across the Nostr network in real-time.
+                  </p>
+                </div>
+                <button
+                  className="btn btn-responsive"
+                  onClick={() => loadExploreData(true)}
+                  disabled={isExploreLoading}
+                  title="Refresh Explore Feed"
+                >
+                  <RefreshCw size={16} className={isExploreLoading ? 'spin' : ''} /> <span className="btn-label">{isExploreLoading ? 'Refreshing...' : 'Refresh Feed'}</span>
+                </button>
+              </div>
+
+              {isExploreLoading && exploreLists.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-secondary)' }}>
+                  <RefreshCw size={28} className="spin" style={{ marginBottom: '0.5rem', color: 'var(--accent-color)' }} />
+                  <div>Querying relays for public <code>kind:30016</code> watchlists...</div>
+                </div>
+              ) : exploreLists.length === 0 ? (
+                <div className="empty-state" style={{ padding: '3rem 1.5rem', textAlign: 'center', backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)' }}>
+                  <Globe size={36} style={{ color: 'var(--accent-color)', marginBottom: '0.75rem' }} />
+                  <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.1rem' }}>No public lists found</h3>
+                  <p style={{ margin: '0 0 1.25rem 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                    No recent <code>kind:30016</code> events were returned from connected relays.
+                  </p>
+                  <button className="btn btn-primary" onClick={() => loadExploreData(true)}>
+                    <RefreshCw size={16} /> Try Refreshing
+                  </button>
+                </div>
+              ) : (
+                <div className="following-feed">
+                  <div className="lists-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+                    {exploreLists.map(list => {
+                      const pubkey = list.id.split(':')[1] || '';
+                      const profile = followedProfiles[pubkey] || exploreProfiles[pubkey];
+                      const displayName = profile?.name || (pubkey ? `${pubkey.substring(0, 8)}...${pubkey.substring(pubkey.length - 4)}` : 'Anonymous');
+
+                      return (
+                        <div key={list.id} className="list-card" onClick={() => setSelectedListId(list.id)}>
+                          <div className="list-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div
+                              className="profile-badge clickable"
+                              style={{ fontSize: '0.8rem', cursor: 'pointer' }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAuthorProfileModal({ isOpen: true, pubkey });
+                              }}
+                              title={`View ${displayName}'s profile`}
+                            >
+                              {profile?.picture ? (
+                                <img src={profile.picture} alt={displayName} className="profile-avatar" style={{ width: '22px', height: '22px' }} />
+                              ) : (
+                                <div className="profile-avatar-fallback" style={{ width: '22px', height: '22px', fontSize: '0.75rem' }}>{displayName.substring(0, 1).toUpperCase()}</div>
+                              )}
+                              <span className="profile-name" style={{ fontWeight: 600, fontSize: '0.85rem' }}>{displayName}</span>
+                            </div>
+                            <span className="column-count">{list.items.length} item{list.items.length === 1 ? '' : 's'}</span>
+                          </div>
+
+                          <h3 className="list-card-title" style={{ marginTop: '0.5rem' }}>{renderListTitle(list)}</h3>
+                          <p className="list-card-desc">{list.description || 'No description provided.'}</p>
+
+                          <div className="list-card-footer">
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                              {list.createdAt ? new Date(list.createdAt * 1000).toLocaleDateString() : ''}
+                            </span>
+                            <span style={{ fontWeight: 600, color: 'var(--accent-color)' }}>Inspect List →</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Sentinel element for infinite scroll */}
+                  <div ref={exploreObserverRef} style={{ height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '1.5rem' }}>
+                    {isExploreLoadingMore && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                        <RefreshCw size={18} className="spin" style={{ color: 'var(--accent-color)' }} />
+                        <span>Loading older watchlists...</span>
+                      </div>
+                    )}
+                    {!hasMoreExplore && exploreLists.length > 0 && (
+                      <div style={{ color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>
+                        Reached end of recent public watchlists.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : activeHubTab === 'my-lists' ? (
             <>
               {/* List Hub Section */}
               <div className="hub-title-row">
@@ -1627,7 +1916,15 @@ function App() {
                     return (
                       <div key={pk} className="following-user-section">
                         <div className="following-user-header">
-                          <div className="profile-badge">
+                          <div
+                            className="profile-badge clickable"
+                            style={{ cursor: 'pointer' }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setAuthorProfileModal({ isOpen: true, pubkey: pk });
+                            }}
+                            title={`View ${displayName}'s profile`}
+                          >
                             {profile?.picture ? (
                               <img src={profile.picture} alt={displayName} className="profile-avatar" />
                             ) : (
@@ -1741,7 +2038,11 @@ function App() {
           {currentList && (
             <div className="workspace-header-card">
               {isSocialList && socialProfile && (
-                <div className="social-author-banner">
+                <div
+                  className="social-author-banner clickable"
+                  onClick={() => socialProfile?.pubkey && setAuthorProfileModal({ isOpen: true, pubkey: socialProfile.pubkey })}
+                  title={`View ${socialProfile.name}'s profile`}
+                >
                   <Globe size={16} color="var(--accent-color)" />
                   <span>Viewing <strong>{socialProfile.name}</strong>'s public list (Read-Only)</span>
                 </div>
@@ -2426,6 +2727,142 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Author Profile Summary Modal */}
+      {authorProfileModal.isOpen && authorProfileModal.pubkey && (() => {
+        const pk = authorProfileModal.pubkey;
+        const profile = followedProfiles[pk] || exploreProfiles[pk];
+        const displayName = profile?.name || `${pk.substring(0, 8)}...${pk.substring(pk.length - 4)}`;
+        const isFollowing = followedPubkeys.includes(pk);
+        const isSelf = nostrUser?.pubkey === pk;
+        const userLists = followedListsMap[pk] || exploreLists.filter(l => l.id.startsWith(`social:${pk}:`));
+
+        return (
+          <div className="modal-overlay" onClick={() => setAuthorProfileModal({ isOpen: false, pubkey: null })}>
+            <div className="modal-content" style={{ maxWidth: '480px', width: '90%' }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+                <h3 className="modal-title" style={{ margin: 0 }}>Author Profile</h3>
+                <button className="btn btn-action-icon" onClick={() => setAuthorProfileModal({ isOpen: false, pubkey: null })}>
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div style={{ padding: '1.25rem 0 0.5rem 0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '1.25rem' }}>
+                  {profile?.picture ? (
+                    <img
+                      src={profile.picture}
+                      alt={displayName}
+                      style={{ width: '52px', height: '52px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--border-color)' }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: '52px',
+                        height: '52px',
+                        borderRadius: '50%',
+                        backgroundColor: 'var(--accent-color)',
+                        color: '#fff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '1.4rem',
+                        fontWeight: 700
+                      }}
+                    >
+                      {displayName.substring(0, 1).toUpperCase()}
+                    </div>
+                  )}
+
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, wordBreak: 'break-word' }}>{displayName}</h4>
+                    <div
+                      style={{
+                        fontSize: '0.8rem',
+                        color: 'var(--text-tertiary)',
+                        marginTop: '0.2rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <span style={{ fontFamily: 'monospace' }}>npub: {pk.substring(0, 10)}...{pk.substring(pk.length - 6)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {!isSelf && (
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    {isFollowing ? (
+                      <button
+                        className="btn btn-action-icon btn-delete"
+                        style={{ width: '100%', justifyContent: 'center', padding: '0.6rem 1rem' }}
+                        onClick={() => {
+                          handleUnfollowUser(pk);
+                        }}
+                      >
+                        <UserMinus size={16} /> Unfollow Contact
+                      </button>
+                    ) : (
+                      <button
+                        className="btn btn-primary"
+                        style={{ width: '100%', justifyContent: 'center', padding: '0.6rem 1rem' }}
+                        onClick={() => {
+                          handleFollowUser(pk);
+                        }}
+                      >
+                        <UserPlus size={16} /> Follow Contact
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                <div>
+                  <h5 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                    Public Watchlists ({userLists.length})
+                  </h5>
+
+                  {userLists.length === 0 ? (
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                      No public watchlists loaded for this profile yet.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+                      {userLists.map(list => (
+                        <div
+                          key={list.id}
+                          style={{
+                            padding: '0.6rem 0.8rem',
+                            borderRadius: 'var(--radius-md)',
+                            backgroundColor: 'var(--bg-secondary)',
+                            border: '1px solid var(--border-color)',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            cursor: 'pointer'
+                          }}
+                          onClick={() => {
+                            setAuthorProfileModal({ isOpen: false, pubkey: null });
+                            setSelectedListId(list.id);
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{renderListTitle(list)}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                              {list.items.length} item{list.items.length === 1 ? '' : 's'}
+                            </div>
+                          </div>
+                          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--accent-color)' }}>Open →</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

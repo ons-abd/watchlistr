@@ -720,6 +720,95 @@ export class NostrService {
     return Array.from(eventsMap.values());
   }
 
+  // Fetch global kind:30016 lists with pagination limit and optional until timestamp
+  public async fetchExploreLists(limit: number = 20, until?: number, timeoutMs: number = 4000): Promise<NostrEvent[]> {
+    const eventsMap: Map<string, NostrEvent> = new Map();
+    const promises: Promise<void>[] = [];
+
+    let activeWebSockets = Array.from(this.relays.entries()).filter(
+      ([_, ws]) => ws.readyState === WebSocket.OPEN
+    );
+
+    if (activeWebSockets.length === 0) {
+      await new Promise<void>((resolve) => {
+        let checkCount = 0;
+        const interval = setInterval(() => {
+          checkCount++;
+          const openSockets = Array.from(this.relays.entries()).filter(
+            ([_, ws]) => ws.readyState === WebSocket.OPEN
+          );
+          if (openSockets.length > 0 || checkCount >= 15) {
+            clearInterval(interval);
+            resolve();
+          }
+        }, 200);
+      });
+
+      activeWebSockets = Array.from(this.relays.entries()).filter(
+        ([_, ws]) => ws.readyState === WebSocket.OPEN
+      );
+    }
+
+    if (activeWebSockets.length === 0) {
+      return [];
+    }
+
+    const subId = `sub_explore_${Math.random().toString(36).substring(2, 9)}`;
+    const filter: any = {
+      kinds: [30016],
+      limit
+    };
+    if (until) {
+      filter.until = until;
+    }
+
+    activeWebSockets.forEach(([url, ws]) => {
+      const promise = new Promise<void>((resolve) => {
+        const handleMessage = (e: MessageEvent) => {
+          try {
+            const data = JSON.parse(e.data);
+            if (data[0] === 'EVENT' && data[1] === subId) {
+              const event = data[2] as NostrEvent;
+              const dTag = event.tags.find(t => t[0] === 'd')?.[1] || '';
+              const key = `${event.pubkey}:${dTag}`;
+              const existing = eventsMap.get(key);
+              if (!existing || event.created_at > existing.created_at) {
+                eventsMap.set(key, event);
+              }
+            } else if (data[0] === 'EOSE' && data[1] === subId) {
+              cleanup();
+              resolve();
+            }
+          } catch (err) {
+            console.error(`Error parsing explore lists from relay ${url}:`, err);
+          }
+        };
+
+        const cleanup = () => {
+          ws.removeEventListener('message', handleMessage);
+        };
+
+        ws.addEventListener('message', handleMessage);
+        ws.send(JSON.stringify(['REQ', subId, filter]));
+
+        setTimeout(() => {
+          try {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify(['CLOSE', subId]));
+            }
+          } catch (e) {}
+          cleanup();
+          resolve();
+        }, timeoutMs);
+      });
+
+      promises.push(promise);
+    });
+
+    await Promise.all(promises);
+    return Array.from(eventsMap.values()).sort((a, b) => b.created_at - a.created_at);
+  }
+
   // Publish a signed event to all active relays
   public async publishEvent(event: NostrEvent): Promise<boolean> {
     const activeWebSockets = Array.from(this.relays.values()).filter(
