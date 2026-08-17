@@ -2254,9 +2254,11 @@ function App() {
                   <p className="workspace-desc">{currentList.description || 'No description provided.'}</p>
                 </div>
                 <div className="workspace-stats" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
-                  <button className="btn btn-primary btn-responsive" onClick={() => setIsSearchDrawerOpen(true)} title="Search & Add">
-                    <Plus size={16} /> <span className="btn-label">Search & Add</span>
-                  </button>
+                  {!isSocialList && (!nostrUser || !nostrUser.readOnly) && (
+                    <button className="btn btn-primary btn-responsive" onClick={() => setIsSearchDrawerOpen(true)} title="Find & Add">
+                      <Plus size={16} /> <span className="btn-label">Find & Add</span>
+                    </button>
+                  )}
                   <span className="workspace-item-count">{currentList.items.length} Items</span>
                 </div>
               </div>
@@ -2269,12 +2271,20 @@ function App() {
               <div className="empty-state">
                 <Film size={48} className="empty-state-icon" />
                 <h3 className="empty-state-title">This list is currently empty</h3>
-                <p className="empty-state-text">
-                  Use the <strong>Search & Add</strong> button to find movies or TV shows on TheTVDB and add them to <strong>{currentList ? renderListTitle(currentList) : 'this list'}</strong>.
-                </p>
-                <button className="btn btn-primary btn-responsive" onClick={() => setIsSearchDrawerOpen(true)} title="Search & Add">
-                  <Plus size={16} /> <span className="btn-label">Search & Add</span>
-                </button>
+                {!isSocialList && (!nostrUser || !nostrUser.readOnly) ? (
+                  <>
+                    <p className="empty-state-text">
+                      Use the <strong>Find & Add</strong> button to find movies or TV shows on TheTVDB and add them to <strong>{currentList ? renderListTitle(currentList) : 'this list'}</strong>.
+                    </p>
+                    <button className="btn btn-primary btn-responsive" onClick={() => setIsSearchDrawerOpen(true)} title="Find & Add">
+                      <Plus size={16} /> <span className="btn-label">Find & Add</span>
+                    </button>
+                  </>
+                ) : (
+                  <p className="empty-state-text">
+                    No items have been added to this list yet.
+                  </p>
+                )}
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -2382,7 +2392,7 @@ function App() {
             <div className="search-drawer-overlay" onClick={() => setIsSearchDrawerOpen(false)}>
               <div className="search-drawer" onClick={(e) => e.stopPropagation()}>
                 <div className="search-drawer-header">
-                  <h3 className="modal-title" style={{ margin: 0 }}>Search & Add Media</h3>
+                  <h3 className="modal-title" style={{ margin: 0 }}>Find & Add Media</h3>
                   <button className="btn btn-action-icon" onClick={() => setIsSearchDrawerOpen(false)} title="Close">
                     <X size={16} />
                   </button>
