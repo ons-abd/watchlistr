@@ -284,6 +284,25 @@ function App() {
   });
   const [newListForm, setNewListForm] = useState({ title: '', description: '' });
 
+  // Modal state for editing existing list
+  const [editListModal, setEditListModal] = useState<{
+    isOpen: boolean;
+    list: MediaList | null;
+  }>({
+    isOpen: false,
+    list: null
+  });
+  const [editListForm, setEditListForm] = useState({ title: '', description: '' });
+
+  // Modal state for deleting list confirmation
+  const [deleteListModal, setDeleteListModal] = useState<{
+    isOpen: boolean;
+    list: MediaList | null;
+  }>({
+    isOpen: false,
+    list: null
+  });
+
   // Initialize Nostr Extension check and WebSocket Service
   useEffect(() => {
     const service = new NostrService(DEFAULT_RELAYS);
@@ -1157,6 +1176,67 @@ function App() {
 
     setNewListForm({ title: '', description: '' });
     setNewListModal({ isOpen: false, type: 'watched' });
+  };
+
+  const openEditListModal = (list: MediaList) => {
+    setEditListForm({
+      title: list.title,
+      description: list.description || ''
+    });
+    setEditListModal({ isOpen: true, list });
+  };
+
+  const saveEditList = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editListModal.list || !editListForm.title.trim()) return;
+
+    const updatedTitle = editListForm.title.trim();
+    const updatedDesc = editListForm.description.trim();
+    const targetId = editListModal.list.id;
+
+    const updatedList: MediaList = {
+      ...editListModal.list,
+      title: updatedTitle,
+      description: updatedDesc
+    };
+
+    setLists(prev => prev.map(l => l.id === targetId ? updatedList : l));
+    publishListToNostr(updatedList);
+    setEditListModal({ isOpen: false, list: null });
+  };
+
+  const deleteListFromNostr = async (listId: string) => {
+    if (!nostrUser || nostrUser.readOnly || !nostrServiceRef.current || !activeSignerRef.current) return;
+    try {
+      const unsignedEvent = {
+        created_at: Math.floor(Date.now() / 1000),
+        kind: 5,
+        tags: [
+          ["a", `30016:${nostrUser.pubkey}:${listId}`],
+          ["d", listId]
+        ],
+        content: `Deleted list ${listId}`
+      };
+      const signedEvent = await activeSignerRef.current.signEvent(unsignedEvent);
+      await nostrServiceRef.current.publishEvent(signedEvent);
+    } catch (err) {
+      console.error(`Failed to publish list deletion for ${listId}:`, err);
+    }
+  };
+
+  const confirmDeleteList = (list: MediaList) => {
+    setDeleteListModal({ isOpen: true, list });
+  };
+
+  const executeDeleteList = () => {
+    if (!deleteListModal.list) return;
+
+    const targetId = deleteListModal.list.id;
+    setLists(prev => prev.filter(l => l.id !== targetId));
+    deleteListFromNostr(targetId);
+
+    setDeleteListModal({ isOpen: false, list: null });
+    setSelectedListId(null);
   };
 
   // Actions
@@ -2147,8 +2227,29 @@ function App() {
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.4rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.4rem', flexWrap: 'wrap' }}>
                     <h1 className="workspace-title">{renderListTitle(currentList)}</h1>
+
+                    {!isSocialList && (!nostrUser || !nostrUser.readOnly) && (
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginLeft: '4px' }}>
+                        <button
+                          className="btn btn-action-icon btn-small"
+                          onClick={() => openEditListModal(currentList)}
+                          title="Edit list title and description"
+                          style={{ padding: '3px 8px', fontSize: '0.75rem' }}
+                        >
+                          <Pencil size={13} /> <span className="btn-label">Edit</span>
+                        </button>
+                        <button
+                          className="btn btn-action-icon btn-delete btn-small"
+                          onClick={() => confirmDeleteList(currentList)}
+                          title="Delete this list"
+                          style={{ padding: '3px 8px', fontSize: '0.75rem' }}
+                        >
+                          <Trash2 size={13} /> <span className="btn-label">Delete</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <p className="workspace-desc">{currentList.description || 'No description provided.'}</p>
                 </div>
@@ -2774,6 +2875,105 @@ function App() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Dialog for editing existing list */}
+      {editListModal.isOpen && editListModal.list && (
+        <div className="modal-overlay" onClick={() => setEditListModal({ isOpen: false, list: null })}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+              <h3 className="modal-title" style={{ margin: 0 }}>Edit List Details</h3>
+              <button className="btn btn-action-icon" onClick={() => setEditListModal({ isOpen: false, list: null })}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={saveEditList} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '1.25rem' }}>
+              <div className="modal-field">
+                <label className="modal-label">List Title *</label>
+                <input
+                  type="text"
+                  className="input-field"
+                  value={editListForm.title}
+                  onChange={(e) => setEditListForm(prev => ({ ...prev, title: e.target.value }))}
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div className="modal-field">
+                <label className="modal-label">Description (Optional)</label>
+                <textarea
+                  className="input-field"
+                  placeholder="Provide a brief description for this list..."
+                  rows={3}
+                  value={editListForm.description}
+                  onChange={(e) => setEditListForm(prev => ({ ...prev, description: e.target.value }))}
+                  style={{ resize: 'vertical' }}
+                />
+              </div>
+
+              <div className="modal-actions-bar">
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => setEditListModal({ isOpen: false, list: null })}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                >
+                  <Check size={16} /> Save & Publish
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Dialog for deleting list confirmation */}
+      {deleteListModal.isOpen && deleteListModal.list && (
+        <div className="modal-overlay" onClick={() => setDeleteListModal({ isOpen: false, list: null })}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+              <h3 className="modal-title" style={{ margin: 0, color: '#ef4444', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Trash2 size={18} /> Delete List
+              </h3>
+              <button className="btn btn-action-icon" onClick={() => setDeleteListModal({ isOpen: false, list: null })}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{ padding: '1.25rem 0 0.5rem 0' }}>
+              <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', color: 'var(--text-primary)', lineHeight: '1.5' }}>
+                Are you sure you want to delete <strong>"{deleteListModal.list.title}"</strong>?
+              </p>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                This action will permanently remove the list and publish a deletion request to Nostr relays. This cannot be undone.
+              </p>
+            </div>
+
+            <div className="modal-actions-bar" style={{ marginTop: '1.25rem' }}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setDeleteListModal({ isOpen: false, list: null })}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ backgroundColor: '#ef4444', borderColor: '#ef4444', color: '#ffffff' }}
+                onClick={executeDeleteList}
+              >
+                <Trash2 size={16} /> Delete Permanently
+              </button>
+            </div>
           </div>
         </div>
       )}
