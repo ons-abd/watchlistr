@@ -383,20 +383,31 @@ function App() {
         }
         const json = await response.json();
         if (json.data) {
-          const mapped: Media[] = json.data.map((item: any) => ({
-            id: `${item.type}-${item.tvdb_id}`,
-            title: item.name,
-            year: item.year || 'N/A',
-            type: item.type === 'series' ? 'tv' : 'movie',
-            poster: item.image || item.image_url || item.thumbnail || '',
-            genres: Array.isArray(item.genres)
-              ? item.genres.map((g: any) => typeof g === 'string' ? g : (g?.name || '')).filter(Boolean)
-              : [],
-            slug: item.slug || undefined,
-            director: item.director || undefined,
-            creator: item.network || undefined,
-            overview: item.overview || undefined
-          }));
+          const mapped: Media[] = json.data.flatMap((item: any) => {
+            let mediaType: 'movie' | 'tv';
+            if (item.type === 'series') {
+              mediaType = 'tv';
+            } else if (item.type === 'movie') {
+              mediaType = 'movie';
+            } else {
+              return [];
+            }
+
+            return [{
+              id: `${mediaType}-${item.tvdb_id}`,
+              title: item.name,
+              year: item.year || 'N/A',
+              type: mediaType,
+              poster: item.image || item.image_url || item.thumbnail || '',
+              genres: Array.isArray(item.genres)
+                ? item.genres.map((g: any) => typeof g === 'string' ? g : (g?.name || '')).filter(Boolean)
+                : [],
+              slug: item.slug || undefined,
+              director: item.director || undefined,
+              creator: item.network || undefined,
+              overview: item.overview || undefined
+            }];
+          });
           setSearchResults(mapped);
         } else {
           setSearchResults([]);
