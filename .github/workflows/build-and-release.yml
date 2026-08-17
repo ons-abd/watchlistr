@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   check-and-build:
-    name: Lint & Build Frontend
+    name: Frontend build
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -44,7 +44,7 @@ jobs:
           retention-days: 7
 
   release:
-    name: Publish Release Bundle
+    name: Frontend release
     needs: check-and-build
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -73,7 +73,7 @@ jobs:
           files: watchlistr-dist.zip
 
   docker:
-    name: Build & Push Docker Image
+    name: Proxy image build and publish
     needs: check-and-build
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
