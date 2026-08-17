@@ -1830,7 +1830,7 @@ function App() {
                 </div>
               ) : (
                 <div className="following-feed">
-                  <div className="lists-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+                  <div className="lists-grid">
                     {exploreLists.map(list => {
                       const pubkey = list.id.split(':')[1] || '';
                       const profile = followedProfiles[pubkey] || exploreProfiles[pubkey];
@@ -2029,7 +2029,7 @@ function App() {
                                 No public <code>kind:30016</code> lists found for this profile on connected relays.
                               </div>
                             ) : (
-                              <div className="lists-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+                              <div className="lists-grid">
                                 {userLists.map(list => (
                                   <div
                                     key={list.id}

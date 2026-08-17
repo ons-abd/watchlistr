@@ -941,9 +941,11 @@ textarea.input-field {
   display: flex;
   flex-direction: column;
   gap: 2rem;
-  max-width: 960px;
+  width: 100%;
+  max-width: 1100px;
   margin: 0 auto;
   padding: 2rem 1rem;
+  box-sizing: border-box;
 }
 
 .hub-hero {
@@ -1340,6 +1342,8 @@ textarea.input-field {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .following-user-section {
@@ -1347,6 +1351,8 @@ textarea.input-field {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   padding: 1.25rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .following-user-header {
