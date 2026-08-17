@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Bookmark,
   Users,
+  User,
   UserPlus,
   UserMinus,
   Globe,
@@ -1768,8 +1769,9 @@ function App() {
             <button
               className={`hub-tab ${activeHubTab === 'my-lists' ? 'active' : ''}`}
               onClick={() => setActiveHubTab('my-lists')}
+              title="My Lists"
             >
-              My Lists ({lists.length})
+              <User size={16} /> <span className="tab-label">My Lists ({lists.length})</span>
             </button>
             <button
               className={`hub-tab ${activeHubTab === 'explore' ? 'active' : ''}`}
@@ -1779,14 +1781,16 @@ function App() {
                   loadExploreData(true);
                 }
               }}
+              title="Explore"
             >
-              <Globe size={16} /> Explore
+              <Globe size={16} /> <span className="tab-label">Explore</span>
             </button>
             <button
               className={`hub-tab ${activeHubTab === 'following' ? 'active' : ''}`}
               onClick={() => setActiveHubTab('following')}
+              title="Following"
             >
-              <Users size={16} /> Following ({followedPubkeys.length})
+              <Users size={16} /> <span className="tab-label">Following ({followedPubkeys.length})</span>
             </button>
           </div>
 

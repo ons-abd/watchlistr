@@ -526,13 +526,21 @@ textarea.input-field {
   background-color: var(--bg-tertiary);
 }
 
-/* Responsive Button Utility (Mobile Icon-Only) */
+/* Responsive Utility (Mobile Adjustments) */
 @media (max-width: 640px) {
   .btn-responsive .btn-label {
     display: none;
   }
   .btn-responsive {
     padding: 0.4rem 0.55rem;
+  }
+  .hub-tab .tab-label {
+    display: none;
+  }
+  .hub-tab {
+    padding: 0.75rem;
+    flex: 1;
+    justify-content: center;
   }
 }
 
