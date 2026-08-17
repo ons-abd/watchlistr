@@ -18,9 +18,7 @@ import {
   Globe,
   Smartphone,
   Key,
-  Copy,
-  ChevronDown,
-  ChevronUp
+  Copy
 } from 'lucide-react';
 import {
   NostrService,
@@ -2004,22 +2002,16 @@ function App() {
                             </div>
                           </div>
 
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <button
-                              className="btn btn-action-icon btn-delete"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleUnfollowUser(pk);
-                              }}
-                              title="Unfollow user"
-                            >
-                              <UserMinus size={16} /> Unfollow
-                            </button>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                              <span>{userLists.length} list{userLists.length === 1 ? '' : 's'}</span>
-                              {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                            </div>
-                          </div>
+                          <button
+                            className="btn btn-action-icon btn-delete btn-responsive"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleUnfollowUser(pk);
+                            }}
+                            title="Unfollow user"
+                          >
+                            <UserMinus size={16} /> <span className="btn-label">Unfollow</span>
+                          </button>
                         </div>
 
                         {isExpanded && (

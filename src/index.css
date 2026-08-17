@@ -1416,6 +1416,7 @@ textarea.input-field {
   height: 40px;
   border-radius: 50%;
   object-fit: cover;
+  flex-shrink: 0;
   border: 2px solid var(--accent-color);
   transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
 }
@@ -1430,6 +1431,7 @@ textarea.input-field {
   align-items: center;
   justify-content: center;
   font-weight: bold;
+  flex-shrink: 0;
   border: 2px solid var(--accent-color);
   transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
 }
