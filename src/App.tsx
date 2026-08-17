@@ -1439,7 +1439,33 @@ function App() {
     return years;
   };
 
-  const renderListCardFooter = (items: Media[]) => {
+  const ListCardPosterStrip: React.FC<{ items: Media[] }> = ({ items }) => {
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    const [maxSlots, setMaxSlots] = useState<number>(5);
+
+    useEffect(() => {
+      const el = containerRef.current;
+      if (!el) return;
+
+      const updateSlots = (width: number) => {
+        const calculated = Math.max(1, Math.floor((width + 6) / 42));
+        setMaxSlots(calculated);
+      };
+
+      updateSlots(el.getBoundingClientRect().width);
+
+      const observer = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.contentRect.width > 0) {
+            updateSlots(entry.contentRect.width);
+          }
+        }
+      });
+
+      observer.observe(el);
+      return () => observer.disconnect();
+    }, []);
+
     if (!items || items.length === 0) {
       return (
         <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', fontStyle: 'italic', padding: '4px 0' }}>
@@ -1448,13 +1474,12 @@ function App() {
       );
     }
 
-    const maxPreviewPosters = 5;
-    const showOverflow = items.length > maxPreviewPosters;
-    const visibleItems = showOverflow ? items.slice(0, maxPreviewPosters - 1) : items.slice(0, maxPreviewPosters);
+    const showOverflow = items.length > maxSlots;
+    const visibleItems = showOverflow ? items.slice(0, maxSlots - 1) : items.slice(0, maxSlots);
     const remainingCount = items.length - visibleItems.length;
 
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden', width: '100%' }}>
+      <div ref={containerRef} style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden', width: '100%' }}>
         {visibleItems.map((item, idx) => (
           <div
             key={item.id || `${item.title}-${idx}`}
@@ -1863,7 +1888,7 @@ function App() {
                           <p className="list-card-desc">{list.description || 'No description provided.'}</p>
 
                           <div className="list-card-footer">
-                            {renderListCardFooter(list.items)}
+                            <ListCardPosterStrip items={list.items} />
                           </div>
                         </div>
                       );
@@ -1930,7 +1955,7 @@ function App() {
                     <p className="list-card-desc">{list.description || 'No description provided.'}</p>
 
                     <div className="list-card-footer">
-                      {renderListCardFooter(list.items)}
+                      <ListCardPosterStrip items={list.items} />
                     </div>
                   </div>
                 ))}
@@ -2036,7 +2061,7 @@ function App() {
                                     <p className="list-card-desc">{list.description || 'No description provided.'}</p>
 
                                     <div className="list-card-footer">
-                                      {renderListCardFooter(list.items)}
+                                      <ListCardPosterStrip items={list.items} />
                                     </div>
                                   </div>
                                 ))}
