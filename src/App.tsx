@@ -22,7 +22,8 @@ import {
   Key,
   Copy,
   Settings,
-  LogOut
+  LogOut,
+  Upload
 } from 'lucide-react';
 import {
   NostrService,
@@ -30,7 +31,8 @@ import {
   ReadOnlySigner,
   BunkerNip46Signer,
   createBunkerSigner,
-  startNostrConnectSession
+  startNostrConnectSession,
+  uploadNostrImage
 } from './nostr';
 import type { NostrSigner } from './nostr';
 import './App.css';
@@ -223,6 +225,15 @@ function App() {
   // Connection & Settings modal states
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+
+  // Profile Edit state & Deferred Upload
+  const [profileEditName, setProfileEditName] = useState('');
+  const [profileEditPicture, setProfileEditPicture] = useState('');
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [isPublishingProfile, setIsPublishingProfile] = useState(false);
+  const [publishingStep, setPublishingStep] = useState<'uploading' | 'publishing' | null>(null);
+  const [profileStatus, setProfileStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isDraggingAvatar, setIsDraggingAvatar] = useState(false);
   const [authorProfileModal, setAuthorProfileModal] = useState<{
     isOpen: boolean;
     pubkey: string | null;
@@ -1103,6 +1114,95 @@ function App() {
       await nostrServiceRef.current.publishEvent(signedEvent);
     } catch (e) {
       console.error("Failed to publish kind:30007 block list:", e);
+    }
+  };
+
+  // Sync profile edit inputs when Connection modal opens
+  useEffect(() => {
+    if (isConnectionModalOpen && nostrUser) {
+      setProfileEditName(nostrUser.name || '');
+      setProfileEditPicture(nostrUser.picture || '');
+      setSelectedImageFile(null);
+      setProfileStatus(null);
+      setPublishingStep(null);
+    }
+  }, [isConnectionModalOpen, nostrUser]);
+
+  // Select local image file for deferred upload upon profile submit
+  const handleFileSelection = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setProfileStatus({ type: 'error', message: 'Please select a valid image file.' });
+      return;
+    }
+    setSelectedImageFile(file);
+    const localPreview = URL.createObjectURL(file);
+    setProfileEditPicture(localPreview);
+    setProfileStatus(null);
+  };
+
+  // Deferred Profile Save (Uploads Photo to nostr.build if selected, then publishes kind:0 Profile event)
+  const handlePublishProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nostrUser || nostrUser.readOnly || !nostrServiceRef.current || !activeSignerRef.current) return;
+    if (!profileEditName.trim()) {
+      setProfileStatus({ type: 'error', message: 'Display name cannot be empty.' });
+      return;
+    }
+
+    setIsPublishingProfile(true);
+    setProfileStatus(null);
+
+    try {
+      let finalPictureUrl = profileEditPicture.trim();
+
+      // Step 1: Upload photo if a local file was chosen
+      if (selectedImageFile) {
+        setPublishingStep('uploading');
+        finalPictureUrl = await uploadNostrImage(selectedImageFile, activeSignerRef.current);
+        setProfileEditPicture(finalPictureUrl);
+        setSelectedImageFile(null);
+      }
+
+      // Step 2: Publish kind:0 Profile metadata event
+      setPublishingStep('publishing');
+      let existingMeta: Record<string, any> = {};
+      const existingProfileEvent = await nostrServiceRef.current.fetchUserProfile(nostrUser.pubkey);
+      if (existingProfileEvent?.content) {
+        try {
+          existingMeta = JSON.parse(existingProfileEvent.content);
+        } catch (err) {}
+      }
+
+      const updatedMeta = {
+        ...existingMeta,
+        name: profileEditName.trim(),
+        display_name: profileEditName.trim(),
+        picture: finalPictureUrl
+      };
+
+      const unsignedEvent = {
+        created_at: Math.floor(Date.now() / 1000),
+        kind: 0,
+        tags: [],
+        content: JSON.stringify(updatedMeta)
+      };
+
+      const signedEvent = await activeSignerRef.current.signEvent(unsignedEvent);
+      await nostrServiceRef.current.publishEvent(signedEvent);
+
+      setNostrUser(prev => prev ? {
+        ...prev,
+        name: profileEditName.trim(),
+        picture: finalPictureUrl
+      } : null);
+
+      setProfileStatus({ type: 'success', message: 'Profile updated & published to Nostr relays!' });
+    } catch (err: any) {
+      console.error("Failed to publish profile:", err);
+      setProfileStatus({ type: 'error', message: err.message || 'Failed to update profile.' });
+    } finally {
+      setIsPublishingProfile(false);
+      setPublishingStep(null);
     }
   };
 
@@ -3280,34 +3380,167 @@ function App() {
           </div>
         );
       })()}
-      {/* Connection Info Modal */}
+      {/* Connection Info & Profile Setup Modal */}
       {isConnectionModalOpen && (
         <div className="modal-overlay" onClick={() => setIsConnectionModalOpen(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '460px' }}>
             <div className="modal-header">
-              <h3 className="modal-title" style={{ margin: 0, fontSize: '1.25rem' }}>Account & Connection</h3>
+              <h3 className="modal-title" style={{ margin: 0, fontSize: '1.25rem' }}>Account & Profile</h3>
               <button className="btn btn-action-icon" onClick={() => setIsConnectionModalOpen(false)} title="Close">
                 <X size={18} />
               </button>
             </div>
 
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                {nostrUser?.picture ? (
-                  <img src={nostrUser.picture} alt="Avatar" style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border-color)' }} />
-                ) : (
-                  <div className="profile-avatar-fallback" style={{ width: '48px', height: '48px', fontSize: '1.3rem' }}>
-                    {(nostrUser?.name || 'A').substring(0, 1).toUpperCase()}
-                  </div>
-                )}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, fontSize: '1.1rem' }}>{nostrUser?.name || 'Nostr User'}</div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
-                    Mode: {nostrUser?.signerType === 'bunker' ? 'Remote Signer (NIP-46)' : nostrUser?.readOnly ? 'Read-Only Mode' : 'Extension (NIP-07)'}
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {/* Profile Setup Form */}
+              <form onSubmit={handlePublishProfile} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                  Nostr Profile
+                </div>
+
+                {/* Avatar Drag & Drop Dropzone */}
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setIsDraggingAvatar(true); }}
+                  onDragLeave={() => setIsDraggingAvatar(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDraggingAvatar(false);
+                    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                      handleFileSelection(e.dataTransfer.files[0]);
+                    }
+                  }}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '1rem',
+                    border: isDraggingAvatar ? '2px dashed var(--accent-color)' : '1px dashed var(--border-color)',
+                    backgroundColor: isDraggingAvatar ? 'var(--accent-color-light)' : 'var(--bg-secondary)',
+                    borderRadius: 'var(--radius-md)',
+                    gap: '0.75rem',
+                    textAlign: 'center',
+                    transition: 'all var(--transition-fast)'
+                  }}
+                >
+                  {profileEditPicture ? (
+                    <img
+                      src={profileEditPicture}
+                      alt="Avatar Preview"
+                      style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--accent-color)' }}
+                    />
+                  ) : (
+                    <div className="profile-avatar-fallback" style={{ width: '64px', height: '64px', fontSize: '1.75rem' }}>
+                      {(profileEditName || nostrUser?.name || 'A').substring(0, 1).toUpperCase()}
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                    <label className="btn btn-small btn-primary" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      <Upload size={14} /> Choose Photo
+                      <input
+                        type="file"
+                        accept="image/*"
+                        disabled={isPublishingProfile || nostrUser?.readOnly}
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            handleFileSelection(e.target.files[0]);
+                          }
+                        }}
+                        style={{ display: 'none' }}
+                      />
+                    </label>
+                    <span style={{ fontSize: '0.75rem', color: selectedImageFile ? 'var(--accent-color)' : 'var(--text-tertiary)', fontWeight: selectedImageFile ? 600 : 400 }}>
+                      {selectedImageFile ? 'Photo selected. Click Save Profile to upload & publish.' : 'Drag & drop image here or choose photo'}
+                    </span>
                   </div>
                 </div>
-              </div>
 
+                {/* Name Input */}
+                <div className="modal-field">
+                  <label className="modal-label">Display Name</label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    placeholder="e.g. Satoshi"
+                    value={profileEditName}
+                    onChange={(e) => setProfileEditName(e.target.value)}
+                    disabled={isPublishingProfile || nostrUser?.readOnly}
+                    required
+                  />
+                </div>
+
+                {/* Picture URL Input */}
+                <div className="modal-field">
+                  <label className="modal-label">Profile Picture URL</label>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '0.25rem' }}>
+                    <input
+                      type="url"
+                      className="input-field"
+                      placeholder="https://nostr.build/i/..."
+                      value={profileEditPicture}
+                      onChange={(e) => {
+                        setProfileEditPicture(e.target.value);
+                        setSelectedImageFile(null);
+                      }}
+                      disabled={isPublishingProfile || nostrUser?.readOnly}
+                      style={{ flex: 1 }}
+                    />
+                    {profileEditPicture && (
+                      <button
+                        type="button"
+                        className="btn btn-action-icon"
+                        onClick={() => {
+                          navigator.clipboard.writeText(profileEditPicture);
+                          setProfileStatus({ type: 'success', message: 'Profile picture URL copied to clipboard!' });
+                        }}
+                        title="Copy image URL"
+                      >
+                        <Copy size={16} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {profileStatus && (
+                  <div style={{
+                    fontSize: '0.85rem',
+                    padding: '8px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    backgroundColor: profileStatus.type === 'success' ? 'rgba(21, 128, 61, 0.12)' : 'rgba(239, 68, 68, 0.1)',
+                    color: profileStatus.type === 'success' ? '#15803d' : '#ef4444',
+                    border: `1px solid ${profileStatus.type === 'success' ? 'rgba(21, 128, 61, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`
+                  }}>
+                    {profileStatus.message}
+                  </div>
+                )}
+
+                {nostrUser?.readOnly ? (
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                    Connected in Read-Only mode. Sign in with Extension or Bunker to edit profile.
+                  </div>
+                ) : (
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={isPublishingProfile}
+                    style={{ width: '100%', justifyContent: 'center', padding: '0.65rem' }}
+                  >
+                    {isPublishingProfile ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                        <RefreshCw size={16} className="spin" />
+                        {publishingStep === 'uploading'
+                          ? 'Uploading Photo (check bunker)...'
+                          : 'Publishing Profile (check bunker)...'}
+                      </span>
+                    ) : (
+                      'Save Profile'
+                    )}
+                  </button>
+                )}
+              </form>
+
+              {/* Public Key Details */}
               <div style={{ backgroundColor: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '0.25rem' }}>Public Key (npub)</div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
@@ -3330,7 +3563,7 @@ function App() {
 
               <button
                 className="btn btn-delete"
-                style={{ width: '100%', padding: '0.75rem', justifyContent: 'center', marginTop: '0.5rem', fontWeight: 700 }}
+                style={{ width: '100%', padding: '0.75rem', justifyContent: 'center', marginTop: '0.25rem', fontWeight: 700 }}
                 onClick={() => {
                   logoutNostr();
                   setIsConnectionModalOpen(false);
