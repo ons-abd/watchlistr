@@ -35,6 +35,21 @@
 
   --transition-fast: 0.15s ease;
   --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Global Card & Modal Container Padding Tokens */
+  --card-padding-sm: 0.75rem; /* 12px */
+  --card-padding-md: 1rem;    /* 16px */
+  --card-padding-lg: 1.25rem; /* 20px */
+  --card-padding-xl: 1.5rem;  /* 24px */
+}
+
+@media (max-width: 640px) {
+  :root {
+    --card-padding-sm: 0.5rem;   /* 8px */
+    --card-padding-md: 0.65rem;  /* 10.4px */
+    --card-padding-lg: 0.85rem;  /* 13.6px */
+    --card-padding-xl: 1rem;     /* 16px */
+  }
 }
 
 /* Global Reset & Base */
@@ -669,7 +684,7 @@ textarea.input-field {
   border: 1px solid var(--border-color);
   box-shadow: var(--shadow-xl);
   border-radius: var(--radius-lg);
-  padding: 1.5rem;
+  padding: var(--card-padding-xl);
   width: 100%;
   max-width: 440px;
   max-height: calc(100vh - 3rem);
@@ -677,7 +692,7 @@ textarea.input-field {
   overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: var(--card-padding-md);
   animation: slideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   margin: auto;
 }
@@ -1027,7 +1042,7 @@ textarea.input-field {
   background-color: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  padding: 1.25rem;
+  padding: var(--card-padding-lg);
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -1367,9 +1382,17 @@ textarea.input-field {
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  padding: 1.25rem;
+  padding: var(--card-padding-md);
   width: 100%;
   box-sizing: border-box;
+}
+
+.following-user-section .lists-grid {
+  gap: var(--card-padding-md);
+}
+
+.following-user-section .list-card {
+  padding: var(--card-padding-md);
 }
 
 .following-user-header {
