@@ -226,7 +226,8 @@ export function startNostrConnectSession(
     relays,
     secret: secretHex,
     name: 'Watchlistr',
-    url: appOrigin
+    url: appOrigin,
+    perms: ['get_public_key', 'sign_event:30016', 'sign_event:10016']
   });
 
   const bunkerParams: any = {
