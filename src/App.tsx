@@ -226,10 +226,14 @@ function App() {
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
-  // Profile Edit state & Deferred Upload
+  // Profile Edit state & Deferred Upload with Interactive Crop & Zoom
   const [profileEditName, setProfileEditName] = useState('');
   const [profileEditPicture, setProfileEditPicture] = useState('');
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [cropZoom, setCropZoom] = useState(1);
+  const [cropOffset, setCropOffset] = useState({ x: 0, y: 0 });
+  const [isDraggingPhoto, setIsDraggingPhoto] = useState(false);
+  const dragStartRef = useRef({ x: 0, y: 0 });
   const [isPublishingProfile, setIsPublishingProfile] = useState(false);
   const [publishingStep, setPublishingStep] = useState<'uploading' | 'publishing' | null>(null);
   const [profileStatus, setProfileStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -1123,24 +1127,81 @@ function App() {
       setProfileEditName(nostrUser.name || '');
       setProfileEditPicture(nostrUser.picture || '');
       setSelectedImageFile(null);
+      setCropZoom(1);
+      setCropOffset({ x: 0, y: 0 });
       setProfileStatus(null);
       setPublishingStep(null);
     }
   }, [isConnectionModalOpen, nostrUser]);
 
-  // Select local image file for deferred upload upon profile submit
+  // Select local image file for deferred upload & cropping
   const handleFileSelection = (file: File) => {
     if (!file.type.startsWith('image/')) {
       setProfileStatus({ type: 'error', message: 'Please select a valid image file.' });
       return;
     }
     setSelectedImageFile(file);
+    setCropZoom(1);
+    setCropOffset({ x: 0, y: 0 });
     const localPreview = URL.createObjectURL(file);
     setProfileEditPicture(localPreview);
     setProfileStatus(null);
   };
 
-  // Deferred Profile Save (Uploads Photo to nostr.build if selected, then publishes kind:0 Profile event)
+  // HTML5 Canvas Cropper utility (exporting 600x600px Retina crisp JPEG)
+  const generateCroppedAvatarFile = (
+    file: File,
+    zoom: number,
+    offset: { x: number; y: number }
+  ): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const canvas = document.createElement('canvas');
+        canvas.width = 600;
+        canvas.height = 600;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error("Failed to initialize canvas context."));
+          return;
+        }
+
+        const viewportSize = 120; // UI circular preview container size
+        const targetSize = 600;   // High-DPI Retina output resolution
+
+        const baseScale = Math.max(viewportSize / img.naturalWidth, viewportSize / img.naturalHeight);
+        const effectiveScale = baseScale * zoom;
+
+        const cropWidth = viewportSize / effectiveScale;
+        const cropHeight = viewportSize / effectiveScale;
+
+        const centerX = (img.naturalWidth / 2) - (offset.x / effectiveScale);
+        const centerY = (img.naturalHeight / 2) - (offset.y / effectiveScale);
+
+        const srcX = centerX - (cropWidth / 2);
+        const srcY = centerY - (cropHeight / 2);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, targetSize, targetSize);
+        ctx.drawImage(img, srcX, srcY, cropWidth, cropHeight, 0, 0, targetSize, targetSize);
+
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            reject(new Error("Canvas blob export failed."));
+            return;
+          }
+          const croppedFile = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
+          resolve(croppedFile);
+        }, 'image/jpeg', 0.92);
+      };
+      img.onerror = (err) => reject(err);
+      img.src = url;
+    });
+  };
+
+  // Deferred Profile Save (Crops & Uploads Photo to nostr.build if selected, then publishes kind:0 Profile event)
   const handlePublishProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nostrUser || nostrUser.readOnly || !nostrServiceRef.current || !activeSignerRef.current) return;
@@ -1155,10 +1216,11 @@ function App() {
     try {
       let finalPictureUrl = profileEditPicture.trim();
 
-      // Step 1: Upload photo if a local file was chosen
+      // Step 1: Crop and upload photo if a local file was chosen
       if (selectedImageFile) {
         setPublishingStep('uploading');
-        finalPictureUrl = await uploadNostrImage(selectedImageFile, activeSignerRef.current);
+        const croppedFile = await generateCroppedAvatarFile(selectedImageFile, cropZoom, cropOffset);
+        finalPictureUrl = await uploadNostrImage(croppedFile, activeSignerRef.current);
         setProfileEditPicture(finalPictureUrl);
         setSelectedImageFile(null);
       }
@@ -3398,7 +3460,7 @@ function App() {
                   Nostr Profile
                 </div>
 
-                {/* Avatar Drag & Drop Dropzone */}
+                {/* Avatar Drag & Drop & Crop Dropzone */}
                 <div
                   onDragOver={(e) => { e.preventDefault(); setIsDraggingAvatar(true); }}
                   onDragLeave={() => setIsDraggingAvatar(false)}
@@ -3423,7 +3485,64 @@ function App() {
                     transition: 'all var(--transition-fast)'
                   }}
                 >
-                  {profileEditPicture ? (
+                  {/* Interactive Crop / Preview Frame */}
+                  {selectedImageFile ? (
+                    <div
+                      style={{
+                        width: '120px',
+                        height: '120px',
+                        borderRadius: '50%',
+                        overflow: 'hidden',
+                        position: 'relative',
+                        border: '3px solid var(--accent-color)',
+                        cursor: isDraggingPhoto ? 'grabbing' : 'grab',
+                        userSelect: 'none',
+                        touchAction: 'none'
+                      }}
+                      onMouseDown={(e) => {
+                        setIsDraggingPhoto(true);
+                        dragStartRef.current = { x: e.clientX - cropOffset.x, y: e.clientY - cropOffset.y };
+                      }}
+                      onMouseMove={(e) => {
+                        if (!isDraggingPhoto) return;
+                        setCropOffset({
+                          x: e.clientX - dragStartRef.current.x,
+                          y: e.clientY - dragStartRef.current.y
+                        });
+                      }}
+                      onMouseUp={() => setIsDraggingPhoto(false)}
+                      onMouseLeave={() => setIsDraggingPhoto(false)}
+                      onTouchStart={(e) => {
+                        if (e.touches[0]) {
+                          setIsDraggingPhoto(true);
+                          dragStartRef.current = { x: e.touches[0].clientX - cropOffset.x, y: e.touches[0].clientY - cropOffset.y };
+                        }
+                      }}
+                      onTouchMove={(e) => {
+                        if (isDraggingPhoto && e.touches[0]) {
+                          setCropOffset({
+                            x: e.touches[0].clientX - dragStartRef.current.x,
+                            y: e.touches[0].clientY - dragStartRef.current.y
+                          });
+                        }
+                      }}
+                      onTouchEnd={() => setIsDraggingPhoto(false)}
+                    >
+                      <img
+                        src={profileEditPicture}
+                        alt="Avatar Crop Preview"
+                        draggable={false}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          transform: `translate(${cropOffset.x}px, ${cropOffset.y}px) scale(${cropZoom})`,
+                          transformOrigin: 'center',
+                          pointerEvents: 'none'
+                        }}
+                      />
+                    </div>
+                  ) : profileEditPicture ? (
                     <img
                       src={profileEditPicture}
                       alt="Avatar Preview"
@@ -3435,25 +3554,49 @@ function App() {
                     </div>
                   )}
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
-                    <label className="btn btn-small btn-primary" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                      <Upload size={14} /> Choose Photo
-                      <input
-                        type="file"
-                        accept="image/*"
-                        disabled={isPublishingProfile || nostrUser?.readOnly}
-                        onChange={(e) => {
-                          if (e.target.files && e.target.files[0]) {
-                            handleFileSelection(e.target.files[0]);
-                          }
-                        }}
-                        style={{ display: 'none' }}
-                      />
-                    </label>
-                    <span style={{ fontSize: '0.75rem', color: selectedImageFile ? 'var(--accent-color)' : 'var(--text-tertiary)', fontWeight: selectedImageFile ? 600 : 400 }}>
-                      {selectedImageFile ? 'Photo selected. Click Save Profile to upload & publish.' : 'Drag & drop image here or choose photo'}
-                    </span>
-                  </div>
+                  {/* Interactive Crop Controls or File Picker */}
+                  {selectedImageFile ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center', width: '100%' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', maxWidth: '220px' }}>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Zoom</span>
+                        <input
+                          type="range"
+                          min="1"
+                          max="3"
+                          step="0.05"
+                          value={cropZoom}
+                          onChange={(e) => setCropZoom(parseFloat(e.target.value))}
+                          style={{ flex: 1, accentColor: 'var(--accent-color)' }}
+                        />
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                          {cropZoom.toFixed(1)}x
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--accent-color)', fontWeight: 600 }}>
+                        Drag photo to center • Use slider to zoom
+                      </span>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                      <label className="btn btn-small btn-primary" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <Upload size={14} /> Choose Photo
+                        <input
+                          type="file"
+                          accept="image/*"
+                          disabled={isPublishingProfile || nostrUser?.readOnly}
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              handleFileSelection(e.target.files[0]);
+                            }
+                          }}
+                          style={{ display: 'none' }}
+                        />
+                      </label>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                        Drag & drop image here or choose photo
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Name Input */}
