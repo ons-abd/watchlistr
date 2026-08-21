@@ -227,7 +227,7 @@ export function startNostrConnectSession(
     secret: secretHex,
     name: 'Watchlistr',
     url: appOrigin,
-    perms: ['get_public_key', 'sign_event:30016', 'sign_event:10016']
+    perms: ['get_public_key', 'sign_event:30016', 'sign_event:10016', 'sign_event:30007']
   });
 
   const bunkerParams: any = {
@@ -631,6 +631,99 @@ export class NostrService {
     return (newestEvent as NostrEvent).tags
       .filter(t => t[0] === 'p' && t[1])
       .map(t => t[1]);
+  }
+
+  // Fetch kind:30007 block/mute list for a pubkey
+  public async fetchUserBlocks(pubkey: string, timeoutMs: number = 3000): Promise<string[]> {
+    const promises: Promise<void>[] = [];
+
+    let activeWebSockets = Array.from(this.relays.entries()).filter(
+      ([_, ws]) => ws.readyState === WebSocket.OPEN
+    );
+
+    if (activeWebSockets.length === 0) {
+      await new Promise<void>((resolve) => {
+        let checkCount = 0;
+        const interval = setInterval(() => {
+          checkCount++;
+          const openSockets = Array.from(this.relays.entries()).filter(
+            ([_, ws]) => ws.readyState === WebSocket.OPEN
+          );
+          if (openSockets.length > 0 || checkCount >= 15) {
+            clearInterval(interval);
+            resolve();
+          }
+        }, 200);
+      });
+
+      activeWebSockets = Array.from(this.relays.entries()).filter(
+        ([_, ws]) => ws.readyState === WebSocket.OPEN
+      );
+    }
+
+    if (activeWebSockets.length === 0) {
+      return [];
+    }
+
+    const subId = `sub_blocks_${Math.random().toString(36).substring(2, 9)}`;
+    const filter = {
+      authors: [pubkey],
+      kinds: [30007],
+      "#d": ["30016", "mute"]
+    };
+
+    const eventsList: NostrEvent[] = [];
+
+    activeWebSockets.forEach(([url, ws]) => {
+      const promise = new Promise<void>((resolve) => {
+        const handleMessage = (e: MessageEvent) => {
+          try {
+            const data = JSON.parse(e.data);
+            if (data[0] === 'EVENT' && data[1] === subId) {
+              const event = data[2] as NostrEvent;
+              eventsList.push(event);
+            } else if (data[0] === 'EOSE' && data[1] === subId) {
+              cleanup();
+              resolve();
+            }
+          } catch (err) {
+            console.error(`Error parsing blocks from relay ${url}:`, err);
+          }
+        };
+
+        const cleanup = () => {
+          ws.removeEventListener('message', handleMessage);
+        };
+
+        ws.addEventListener('message', handleMessage);
+        ws.send(JSON.stringify(['REQ', subId, filter]));
+
+        setTimeout(() => {
+          try {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify(['CLOSE', subId]));
+            }
+          } catch (e) {}
+          cleanup();
+          resolve();
+        }, timeoutMs);
+      });
+
+      promises.push(promise);
+    });
+
+    await Promise.all(promises);
+
+    if (eventsList.length === 0) return [];
+    const pSet = new Set<string>();
+    eventsList.forEach(event => {
+      event.tags.forEach(t => {
+        if (t[0] === 'p' && t[1]) {
+          pSet.add(t[1]);
+        }
+      });
+    });
+    return Array.from(pSet);
   }
 
   // Fetch kind:30016 lists for multiple followed pubkeys

@@ -16,6 +16,7 @@ import {
   User,
   UserPlus,
   UserMinus,
+  UserX,
   Globe,
   Smartphone,
   Key,
@@ -198,6 +199,12 @@ function App() {
   });
   const [followedProfiles, setFollowedProfiles] = useState<Record<string, { name?: string; picture?: string }>>({});
   const [followedListsMap, setFollowedListsMap] = useState<Record<string, MediaList[]>>({});
+
+  // Blocked users state (kind:30007)
+  const [blockedPubkeys, setBlockedPubkeys] = useState<string[]>(() => {
+    const saved = localStorage.getItem('watchlistr_blocked_pubkeys');
+    return saved ? JSON.parse(saved) : [];
+  });
 
   // Explore tab state
   const [exploreLists, setExploreLists] = useState<MediaList[]>([]);
@@ -704,6 +711,13 @@ function App() {
         localStorage.setItem('watchlistr_followed_pubkeys', JSON.stringify(remoteFollows));
         loadFollowedData(remoteFollows);
       }
+
+      // 4. Fetch blocked pubkeys (kind:30007)
+      const remoteBlocks = await nostrServiceRef.current.fetchUserBlocks(pubkey);
+      if (remoteBlocks && remoteBlocks.length > 0) {
+        setBlockedPubkeys(remoteBlocks);
+        localStorage.setItem('watchlistr_blocked_pubkeys', JSON.stringify(remoteBlocks));
+      }
     } catch (err) {
       console.error("Failed to sync from Nostr:", err);
     } finally {
@@ -876,8 +890,8 @@ function App() {
       const newLists: MediaList[] = [];
       remoteEvents.forEach(event => {
         const pk = event.pubkey || '';
-        if (!pk) return;
-        if (nostrUser?.pubkey && pk === nostrUser.pubkey) return;
+        // Filter out logged in user's own lists and blocked users
+        if ((nostrUser?.pubkey && pk === nostrUser.pubkey) || blockedPubkeys.includes(pk)) return;
         const dTag = event.tags.find(t => t[0] === 'd')?.[1] || 'watchlist:default';
         const titleTag = event.tags.find(t => t[0] === 'title')?.[1] || dTag;
         const descTag = event.tags.find(t => t[0] === 'description')?.[1] || '';
@@ -1035,6 +1049,45 @@ function App() {
       await nostrServiceRef.current.publishEvent(signedEvent);
     } catch (e) {
       console.error("Failed to publish kind:10016 follow list:", e);
+    }
+  };
+
+  const handleBlockUser = (hex: string) => {
+    if (blockedPubkeys.includes(hex)) return;
+
+    const nextBlocks = [...blockedPubkeys, hex];
+    setBlockedPubkeys(nextBlocks);
+    localStorage.setItem('watchlistr_blocked_pubkeys', JSON.stringify(nextBlocks));
+
+    setExploreLists(prev => prev.filter(l => l.id.split(':')[1] !== hex));
+    publishBlockListToNostr(nextBlocks);
+  };
+
+  const handleUnblockUser = (hex: string) => {
+    const nextBlocks = blockedPubkeys.filter(k => k !== hex);
+    setBlockedPubkeys(nextBlocks);
+    localStorage.setItem('watchlistr_blocked_pubkeys', JSON.stringify(nextBlocks));
+
+    publishBlockListToNostr(nextBlocks);
+  };
+
+  const publishBlockListToNostr = async (keysToPublish: string[]) => {
+    if (!nostrUser || nostrUser.readOnly || !nostrServiceRef.current || !activeSignerRef.current) return;
+    try {
+      const pTags = keysToPublish.map(pk => ["p", pk]);
+      const unsignedEvent = {
+        created_at: Math.floor(Date.now() / 1000),
+        kind: 30007,
+        tags: [
+          ["d", "30016"],
+          ...pTags
+        ],
+        content: ""
+      };
+      const signedEvent = await activeSignerRef.current.signEvent(unsignedEvent);
+      await nostrServiceRef.current.publishEvent(signedEvent);
+    } catch (e) {
+      console.error("Failed to publish kind:30007 block list:", e);
     }
   };
 
@@ -1949,7 +2002,7 @@ function App() {
               ) : (
                 <div className="following-feed">
                   <div className="lists-grid">
-                    {exploreLists.map(list => {
+                    {exploreLists.filter(list => !blockedPubkeys.includes(list.id.split(':')[1] || '')).map(list => {
                       const pubkey = list.id.split(':')[1] || '';
                       const profile = followedProfiles[pubkey] || exploreProfiles[pubkey];
                       const displayName = profile?.name || (pubkey ? `${pubkey.substring(0, 8)}...${pubkey.substring(pubkey.length - 4)}` : 'Anonymous');
@@ -3110,26 +3163,45 @@ function App() {
                 </div>
 
                 {!isSelf && (
-                  <div style={{ marginBottom: '1.25rem' }}>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '1.25rem' }}>
                     {isFollowing ? (
                       <button
                         className="btn btn-action-icon btn-delete"
-                        style={{ width: '100%', justifyContent: 'center', padding: '0.6rem 1rem' }}
-                        onClick={() => {
-                          handleUnfollowUser(pk);
-                        }}
+                        style={{ flex: 1, justifyContent: 'center', padding: '0.6rem 1rem' }}
+                        onClick={() => handleUnfollowUser(pk)}
                       >
-                        <UserMinus size={16} /> Unfollow Contact
+                        <UserMinus size={16} /> Unfollow
                       </button>
                     ) : (
                       <button
                         className="btn btn-primary"
-                        style={{ width: '100%', justifyContent: 'center', padding: '0.6rem 1rem' }}
-                        onClick={() => {
-                          handleFollowUser(pk);
-                        }}
+                        style={{ flex: 1, justifyContent: 'center', padding: '0.6rem 1rem' }}
+                        onClick={() => handleFollowUser(pk)}
                       >
-                        <UserPlus size={16} /> Follow Contact
+                        <UserPlus size={16} /> Follow
+                      </button>
+                    )}
+
+                    {blockedPubkeys.includes(pk) ? (
+                      <button
+                        className="btn"
+                        style={{ flex: 1, justifyContent: 'center', padding: '0.6rem 1rem' }}
+                        onClick={() => handleUnblockUser(pk)}
+                        title="Unblock profile"
+                      >
+                        <UserX size={16} /> Unblock
+                      </button>
+                    ) : (
+                      <button
+                        className="btn btn-action-icon btn-delete"
+                        style={{ flex: 1, justifyContent: 'center', padding: '0.6rem 1rem' }}
+                        onClick={() => {
+                          handleBlockUser(pk);
+                          setAuthorProfileModal({ isOpen: false, pubkey: null });
+                        }}
+                        title="Block profile"
+                      >
+                        <UserX size={16} /> Block
                       </button>
                     )}
                   </div>
