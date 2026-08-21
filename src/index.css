@@ -432,14 +432,30 @@ button, input {
   margin-left: 0.15rem;
 }
 
+.media-info {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.media-header {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  margin-bottom: 0.15rem;
+}
+
 .media-title {
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 600;
   color: var(--text-primary);
-  margin-bottom: 0.25rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+  display: block;
+  width: 100%;
 }
 
 .media-rating {

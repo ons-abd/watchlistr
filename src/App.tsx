@@ -79,13 +79,19 @@ interface NostrUser {
   bunkerClientSk?: string;
 }
 
-// Render director or creator info cleanly below title
+// Render director or creator info cleanly below title, with production year
 const renderDirectorCreator = (item: Media) => {
-  if (item.type === 'movie' && item.director) {
-    return <div className="media-creator-director">{item.director}</div>;
+  const creatorOrDirector = item.type === 'movie' ? item.director : item.creator;
+  const year = item.year ? String(item.year).trim() : null;
+
+  if (creatorOrDirector && year) {
+    return <div className="media-creator-director">{creatorOrDirector}, {year}</div>;
   }
-  if (item.type === 'tv' && item.creator) {
-    return <div className="media-creator-director">{item.creator}</div>;
+  if (creatorOrDirector) {
+    return <div className="media-creator-director">{creatorOrDirector}</div>;
+  }
+  if (year) {
+    return <div className="media-creator-director">{year}</div>;
   }
   return null;
 };
@@ -2557,16 +2563,15 @@ function App() {
                       )}
                     </div>
 
-                    <div className="media-info" style={{ flexGrow: 1, paddingLeft: '1rem' }}>
+                    <div className="media-info" style={{ flex: 1, minWidth: 0, paddingLeft: '1rem', overflow: 'hidden' }}>
                       <div className="media-header">
                         <span
                           className="media-title clickable"
                           onClick={() => openDetailsModal(item)}
-                          style={{ fontSize: '1.1rem' }}
+                          title={item.title}
                         >
                           {item.title}
                         </span>
-                        {' '}<span className="media-year">({item.year})</span>
                       </div>
 
                       {renderDirectorCreator(item)}
@@ -2692,12 +2697,11 @@ function App() {
                               )}
                             </div>
 
-                            <div className="media-info" style={{ flexGrow: 1, paddingLeft: '0.75rem' }}>
-                              <div className="media-header" style={{ fontSize: '0.95rem' }}>
-                                <span className="media-title clickable" onClick={() => openDetailsModal(item)}>
+                            <div className="media-info" style={{ flex: 1, minWidth: 0, paddingLeft: '0.75rem', overflow: 'hidden' }}>
+                              <div className="media-header">
+                                <span className="media-title clickable" onClick={() => openDetailsModal(item)} title={item.title}>
                                   {item.title}
                                 </span>
-                                {' '}<span className="media-year">({item.year})</span>
                               </div>
                               {renderDirectorCreator(item)}
                             </div>
