@@ -682,6 +682,15 @@ textarea.input-field {
   margin: auto;
 }
 
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
 .modal-title {
   font-family: var(--font-heading);
   font-size: 1.5rem;

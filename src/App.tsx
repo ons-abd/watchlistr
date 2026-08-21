@@ -20,7 +20,9 @@ import {
   Globe,
   Smartphone,
   Key,
-  Copy
+  Copy,
+  Settings,
+  LogOut
 } from 'lucide-react';
 import {
   NostrService,
@@ -218,7 +220,9 @@ function App() {
   const [followInputKey, setFollowInputKey] = useState('');
   const [followError, setFollowError] = useState<string | null>(null);
 
-  // Author profile summary modal state
+  // Connection & Settings modal states
+  const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [authorProfileModal, setAuthorProfileModal] = useState<{
     isOpen: boolean;
     pubkey: string | null;
@@ -845,6 +849,17 @@ function App() {
     if (!nostrServiceRef.current) return;
     if (isInitial) {
       setIsExploreLoading(true);
+      if (nostrUser?.pubkey) {
+        try {
+          const freshBlocks = await nostrServiceRef.current.fetchUserBlocks(nostrUser.pubkey);
+          if (freshBlocks && freshBlocks.length > 0) {
+            setBlockedPubkeys(freshBlocks);
+            localStorage.setItem('watchlistr_blocked_pubkeys', JSON.stringify(freshBlocks));
+          }
+        } catch (e) {
+          console.error("Failed to refresh mute list:", e);
+        }
+      }
     } else {
       if (isExploreLoadingMore || !hasMoreExplore) return;
       setIsExploreLoadingMore(true);
@@ -1915,7 +1930,12 @@ function App() {
         <div className="hub-layout">
           {/* Top User Profile Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--bg-secondary)', padding: '0.85rem 1.25rem', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)' }}>
-            <div className="nostr-user-info" style={{ margin: 0 }}>
+            <div
+              className="nostr-user-info clickable"
+              onClick={() => setIsConnectionModalOpen(true)}
+              style={{ margin: 0, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+              title="Click to view connection info or disconnect"
+            >
               {isSyncing && <div className="spinner" style={{ width: '14px', height: '14px', border: '2px solid var(--bg-tertiary)', borderTop: '2px solid var(--accent-color)', marginRight: '6px' }}></div>}
               {nostrUser.picture && (
                 <img
@@ -1930,7 +1950,14 @@ function App() {
               {nostrUser.signerType === 'bunker' && <span className="bunker-badge">NIP-46 Bunker</span>}
               {nostrUser.readOnly && <span className="read-only-badge">Read-Only</span>}
             </div>
-            <button className="btn btn-small" onClick={logoutNostr}>Disconnect</button>
+
+            <button
+              className="btn btn-responsive"
+              onClick={() => setIsSettingsModalOpen(true)}
+              title="App Settings"
+            >
+              <Settings size={18} /> <span className="btn-label">Settings</span>
+            </button>
           </div>
 
           {/* Hub Navigation Tabs */}
@@ -3253,6 +3280,145 @@ function App() {
           </div>
         );
       })()}
+      {/* Connection Info Modal */}
+      {isConnectionModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsConnectionModalOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+            <div className="modal-header">
+              <h3 className="modal-title" style={{ margin: 0, fontSize: '1.25rem' }}>Account & Connection</h3>
+              <button className="btn btn-action-icon" onClick={() => setIsConnectionModalOpen(false)} title="Close">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                {nostrUser?.picture ? (
+                  <img src={nostrUser.picture} alt="Avatar" style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border-color)' }} />
+                ) : (
+                  <div className="profile-avatar-fallback" style={{ width: '48px', height: '48px', fontSize: '1.3rem' }}>
+                    {(nostrUser?.name || 'A').substring(0, 1).toUpperCase()}
+                  </div>
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, fontSize: '1.1rem' }}>{nostrUser?.name || 'Nostr User'}</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
+                    Mode: {nostrUser?.signerType === 'bunker' ? 'Remote Signer (NIP-46)' : nostrUser?.readOnly ? 'Read-Only Mode' : 'Extension (NIP-07)'}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ backgroundColor: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '0.25rem' }}>Public Key (npub)</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                  <code style={{ fontSize: '0.8rem', wordBreak: 'break-all', userSelect: 'all' }}>
+                    {nostrUser?.pubkey ? `${nostrUser.pubkey.substring(0, 16)}...${nostrUser.pubkey.substring(nostrUser.pubkey.length - 8)}` : ''}
+                  </code>
+                  <button
+                    className="btn btn-small"
+                    onClick={() => {
+                      if (nostrUser?.pubkey) {
+                        navigator.clipboard.writeText(nostrUser.pubkey);
+                      }
+                    }}
+                    title="Copy Public Key"
+                  >
+                    <Copy size={14} />
+                  </button>
+                </div>
+              </div>
+
+              <button
+                className="btn btn-delete"
+                style={{ width: '100%', padding: '0.75rem', justifyContent: 'center', marginTop: '0.5rem', fontWeight: 700 }}
+                onClick={() => {
+                  logoutNostr();
+                  setIsConnectionModalOpen(false);
+                }}
+              >
+                <LogOut size={16} /> Disconnect Account
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Settings Modal */}
+      {isSettingsModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsSettingsModalOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '520px' }}>
+            <div className="modal-header">
+              <h3 className="modal-title" style={{ margin: 0, fontSize: '1.25rem' }}>App Settings</h3>
+              <button className="btn btn-action-icon" onClick={() => setIsSettingsModalOpen(false)} title="Close">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {/* Relays Section */}
+              <div>
+                <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem', fontWeight: 700 }}>Connected Relays</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {DEFAULT_RELAYS.map(relay => {
+                    const status = relayStatuses[relay];
+                    const isConnected = status === true;
+                    const statusText = status === true ? 'connected' : status === false ? 'disconnected' : 'connecting';
+                    return (
+                      <div key={relay} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.75rem', backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontSize: '0.85rem' }}>
+                        <span style={{ fontFamily: 'monospace' }}>{relay}</span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: isConnected ? '#22c55e' : '#eab308' }}>
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isConnected ? '#22c55e' : '#eab308' }}></span>
+                          {statusText}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Blocked Users Section */}
+              <div>
+                <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem', fontWeight: 700 }}>
+                  Blocked Users ({blockedPubkeys.length})
+                </h4>
+                {blockedPubkeys.length === 0 ? (
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                    No blocked users.
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
+                    {blockedPubkeys.map(pk => {
+                      const profile = followedProfiles[pk] || exploreProfiles[pk];
+                      const displayName = profile?.name || `${pk.substring(0, 8)}...${pk.substring(pk.length - 4)}`;
+                      return (
+                        <div key={pk} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.75rem', backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontSize: '0.85rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {profile?.picture ? (
+                              <img src={profile.picture} alt={displayName} style={{ width: '20px', height: '20px', borderRadius: '50%' }} />
+                            ) : (
+                              <div className="profile-avatar-fallback" style={{ width: '20px', height: '20px', fontSize: '0.7rem' }}>
+                                {displayName.substring(0, 1).toUpperCase()}
+                              </div>
+                            )}
+                            <span style={{ fontWeight: 600 }}>{displayName}</span>
+                          </div>
+                          <button
+                            className="btn btn-small"
+                            onClick={() => handleUnblockUser(pk)}
+                            title="Unblock user"
+                          >
+                            <UserX size={14} /> Unblock
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
