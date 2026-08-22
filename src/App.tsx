@@ -1955,7 +1955,7 @@ function App() {
                       const dev = detectDeviceType();
                       setOnboardingDesktopDevice(null);
                       setIsOnboardingOpen(true);
-                      if (dev === 'android') {
+                      if (dev === 'android' || dev === 'ios') {
                         setOnboardingStep(2);
                       } else {
                         setOnboardingStep(1);
@@ -4000,11 +4000,14 @@ function App() {
                             backgroundColor: 'var(--bg-secondary)',
                             alignItems: 'center'
                           }}
-                          onClick={() => setOnboardingDesktopDevice('ios')}
+                          onClick={() => {
+                            setOnboardingDesktopDevice('ios');
+                            setOnboardingStep(2);
+                          }}
                         >
                           <Smartphone size={28} style={{ color: 'var(--text-secondary)' }} />
                           <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>iPhone / iPad</span>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>iOS Notice</span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Clave Signer</span>
                         </button>
                       </div>
                     </div>
@@ -4013,155 +4016,207 @@ function App() {
               )}
 
               {/* STEP 2: INSTALL A SIGNER APP */}
-              {onboardingStep === 2 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', textAlign: 'center', alignItems: 'center' }}>
-                  <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>Install a Nostr Signer App</div>
-                  <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.45, maxWidth: '460px' }}>
-                    To use Watchlistr safely, you need a mobile <strong>signer app</strong> on your phone. A signer holds your cryptographic keys securely so you never have to type passwords into websites. On Android, we recommend <strong>Amber</strong>.
-                  </p>
+              {onboardingStep === 2 && (() => {
+                const isIOS = detectDeviceType() === 'ios' || onboardingDesktopDevice === 'ios';
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', textAlign: 'center', alignItems: 'center' }}>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>Install a Nostr Signer App</div>
+                    <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.45, maxWidth: '460px' }}>
+                      To use Watchlistr safely, you need a mobile <strong>signer app</strong> on your phone. A signer holds your cryptographic keys securely so you never have to type passwords into websites. {isIOS ? <>On iOS, we recommend <strong>Clave – Nostr Signer</strong>.</> : <>On Android, we recommend <strong>Amber</strong>.</>}
+                    </p>
 
-                  {detectDeviceType() === 'android' ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%', alignItems: 'center' }}>
-                      <a
-                        href="https://github.com/greenart7c3/Amber/releases/latest"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="btn btn-primary"
-                        style={{ width: '100%', maxWidth: '340px', padding: '0.75rem', justifyContent: 'center', textDecoration: 'none', color: '#ffffff', fontWeight: 700 }}
-                      >
-                        <Download size={18} /> Open Amber Releases (GitHub)
-                      </a>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'center' }}>
-                      <div style={{ backgroundColor: '#ffffff', padding: '10px', borderRadius: 'var(--radius-md)', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
-                        <img
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent('https://github.com/greenart7c3/Amber/releases/latest')}`}
-                          alt="Amber Release QR Code"
-                          width={160}
-                          height={160}
-                          style={{ display: 'block' }}
-                        />
-                      </div>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                        Scan with your Android camera to open Amber Releases
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Quick installation & APK selection guidance box */}
-                  <div style={{
-                    width: '100%',
-                    backgroundColor: 'var(--bg-secondary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: '0.85rem 1rem',
-                    textAlign: 'left',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.5rem'
-                  }}>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      Next steps on the Amber release page:
-                    </div>
-                    <ol style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
-                      <li>Look under <strong>Assets</strong> at the bottom of the latest release.</li>
-                      <li>
-                        Choose which <code>.apk</code> to download:
-                        <ul style={{ margin: '0.2rem 0', paddingLeft: '1rem', listStyleType: 'disc' }}>
-                          <li>Download <code>amber-arm64-v...apk</code> for modern Android phones.</li>
-                          <li>Or download <code>amber-fdroid-universal-v...apk</code> if you're not sure!</li>
-                        </ul>
-                      </li>
-                      <li>Install the APK and open Amber to create your new Nostr identity (key pair).</li>
-                      <li>Once your identity is created in Amber, return here and click the button below.</li>
-                    </ol>
-                  </div>
-
-                  <button
-                    className="btn btn-primary"
-                    style={{ width: '100%', justifyContent: 'center', padding: '0.75rem', marginTop: '0.25rem', fontWeight: 700 }}
-                    onClick={() => {
-                      handleStartNostrConnect();
-                      setOnboardingStep(3);
-                    }}
-                  >
-                    I have my signer ready →
-                  </button>
-                </div>
-              )}
-
-              {/* STEP 3: NOSTR CONNECT PAIRING */}
-              {onboardingStep === 3 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', textAlign: 'center', alignItems: 'center' }}>
-                  <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>Connect Watchlistr to Amber</div>
-                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                    Authorize Watchlistr to communicate with Amber via Nostr Connect (NIP-46).
-                  </p>
-
-                  {nostrConnectUri ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center', width: '100%' }}>
-                      {detectDeviceType() === 'android' ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}>
+                    {isIOS ? (
+                      detectDeviceType() === 'ios' ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%', alignItems: 'center' }}>
                           <a
-                            href={nostrConnectUri}
-                            className="btn btn-primary"
-                            style={{ width: '100%', padding: '0.85rem', justifyContent: 'center', textDecoration: 'none', color: '#ffffff', fontWeight: 700, fontSize: '1rem' }}
-                          >
-                            <Smartphone size={18} /> Open in Amber App
-                          </a>
-                          <button
-                            type="button"
-                            className="btn"
-                            onClick={() => {
-                              navigator.clipboard.writeText(nostrConnectUri);
-                              alert("Connection URI copied to clipboard!");
+                            href="itms-apps://search.itunes.apple.com/WebObjects/MZSearch.woa/wa/search?term=clave+nostr+signer"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              window.location.href = "itms-apps://search.itunes.apple.com/WebObjects/MZSearch.woa/wa/search?term=clave+nostr+signer";
                             }}
-                            style={{ width: '100%', justifyContent: 'center' }}
+                            className="btn btn-primary"
+                            style={{ width: '100%', maxWidth: '340px', padding: '0.75rem', justifyContent: 'center', textDecoration: 'none', color: '#ffffff', fontWeight: 700 }}
                           >
-                            <Copy size={14} /> Copy Connection URI
-                          </button>
+                            <Download size={18} /> Find Clave on App Store
+                          </a>
                         </div>
                       ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'center', width: '100%' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'center' }}>
                           <div style={{ backgroundColor: '#ffffff', padding: '10px', borderRadius: 'var(--radius-md)', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
                             <img
-                              src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(nostrConnectUri)}`}
-                              alt="NostrConnect QR Code"
-                              width={180}
-                              height={180}
+                              src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent('https://apps.apple.com/search?term=clave+nostr+signer')}`}
+                              alt="Clave App Store QR Code"
+                              width={160}
+                              height={160}
                               style={{ display: 'block' }}
                             />
                           </div>
-                          <button
-                            type="button"
-                            className="btn btn-small"
-                            onClick={() => {
-                              navigator.clipboard.writeText(nostrConnectUri);
-                              alert("Connection code copied!");
-                            }}
-                          >
-                            <Copy size={14} /> Copy Connection Code
-                          </button>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                            Scan with your iPhone camera to search Clave on App Store
+                          </span>
                         </div>
-                      )}
+                      )
+                    ) : (
+                      detectDeviceType() === 'android' ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%', alignItems: 'center' }}>
+                          <a
+                            href="https://github.com/greenart7c3/Amber/releases/latest"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn btn-primary"
+                            style={{ width: '100%', maxWidth: '340px', padding: '0.75rem', justifyContent: 'center', textDecoration: 'none', color: '#ffffff', fontWeight: 700 }}
+                          >
+                            <Download size={18} /> Open Amber Releases (GitHub)
+                          </a>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'center' }}>
+                          <div style={{ backgroundColor: '#ffffff', padding: '10px', borderRadius: 'var(--radius-md)', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+                            <img
+                              src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent('https://github.com/greenart7c3/Amber/releases/latest')}`}
+                              alt="Amber Release QR Code"
+                              width={160}
+                              height={160}
+                              style={{ display: 'block' }}
+                            />
+                          </div>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                            Scan with your Android camera to open Amber Releases
+                          </span>
+                        </div>
+                      )
+                    )}
 
-                      <div style={{ fontSize: '0.85rem', color: 'var(--accent-color)', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
-                        <RefreshCw size={16} className="spin" />
-                        Waiting for authorization in Amber...
+                    {/* Quick installation guidance box */}
+                    <div style={{
+                      width: '100%',
+                      backgroundColor: 'var(--bg-secondary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-md)',
+                      padding: '0.85rem 1rem',
+                      textAlign: 'left',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.5rem'
+                    }}>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        Next steps to get set up:
                       </div>
+                      {isIOS ? (
+                        <ol style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                          <li>Install <strong>Clave – Nostr Signer</strong> from the Apple App Store.</li>
+                          <li>Open Clave and follow its quick setup steps to create your new Nostr identity (key pair).</li>
+                          <li>Once your identity is created in Clave, return here and click the button below.</li>
+                        </ol>
+                      ) : (
+                        <ol style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                          <li>Look under <strong>Assets</strong> at the bottom of the latest Amber release.</li>
+                          <li>
+                            Choose which <code>.apk</code> to download:
+                            <ul style={{ margin: '0.2rem 0', paddingLeft: '1rem', listStyleType: 'disc' }}>
+                              <li>Download <code>amber-arm64-v...apk</code> for modern Android phones.</li>
+                              <li>Or download <code>amber-fdroid-universal-v...apk</code> if you're not sure!</li>
+                            </ul>
+                          </li>
+                          <li>Install the APK and open Amber to create your new Nostr identity (key pair).</li>
+                          <li>Once your identity is created in Amber, return here and click the button below.</li>
+                        </ol>
+                      )}
                     </div>
-                  ) : (
+
                     <button
                       className="btn btn-primary"
-                      onClick={handleStartNostrConnect}
-                      style={{ width: '100%', justifyContent: 'center', padding: '0.75rem' }}
+                      style={{ width: '100%', justifyContent: 'center', padding: '0.75rem', marginTop: '0.25rem', fontWeight: 700 }}
+                      onClick={() => {
+                        handleStartNostrConnect();
+                        setOnboardingStep(3);
+                      }}
                     >
-                      Generate Connection URI
+                      I have my signer ready →
                     </button>
-                  )}
-                </div>
-              )}
+                  </div>
+                );
+              })()}
+
+              {/* STEP 3: NOSTR CONNECT PAIRING */}
+              {onboardingStep === 3 && (() => {
+                const isIOS = detectDeviceType() === 'ios' || onboardingDesktopDevice === 'ios';
+                const signerName = isIOS ? 'Clave' : 'Amber';
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', textAlign: 'center', alignItems: 'center' }}>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>Connect Watchlistr to {signerName}</div>
+                    <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                      Authorize Watchlistr to communicate with {signerName} via Nostr Connect (NIP-46).
+                    </p>
+
+                    {nostrConnectUri ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center', width: '100%' }}>
+                        {detectDeviceType() === 'android' || detectDeviceType() === 'ios' ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}>
+                            <a
+                              href={nostrConnectUri}
+                              className="btn btn-primary"
+                              style={{ width: '100%', padding: '0.85rem', justifyContent: 'center', textDecoration: 'none', color: '#ffffff', fontWeight: 700, fontSize: '1rem' }}
+                            >
+                              <Smartphone size={18} /> Open in {signerName} App
+                            </a>
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={() => {
+                                navigator.clipboard.writeText(nostrConnectUri);
+                                alert("Connection URI copied to clipboard!");
+                              }}
+                              style={{ width: '100%', justifyContent: 'center' }}
+                            >
+                              <Copy size={14} /> Copy Connection URI
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'center' }}>
+                            <div style={{ backgroundColor: '#ffffff', padding: '12px', borderRadius: 'var(--radius-md)', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+                              <img
+                                src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(nostrConnectUri)}`}
+                                alt="Nostr Connect QR Code"
+                                width={180}
+                                height={180}
+                                style={{ display: 'block' }}
+                              />
+                            </div>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                              Scan with {signerName} app to approve pairing
+                            </span>
+                            <button
+                              type="button"
+                              className="btn btn-small"
+                              onClick={() => {
+                                navigator.clipboard.writeText(nostrConnectUri);
+                                alert("Connection URI copied to clipboard!");
+                              }}
+                              style={{ marginTop: '0.25rem' }}
+                            >
+                              <Copy size={12} /> Copy Connection URI
+                            </button>
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '0.5rem', color: 'var(--accent-color)', fontSize: '0.85rem', fontWeight: 600 }}>
+                          <RefreshCw size={16} className="spin" /> Waiting for connection authorization...
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={handleStartNostrConnect}
+                        style={{ width: '100%', justifyContent: 'center', padding: '0.75rem' }}
+                      >
+                        Generate Connection URI
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* STEP 4: BUILT-IN PROFILE SETUP (GLORIOUS STEP!) */}
               {onboardingStep === 4 && (

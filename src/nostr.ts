@@ -1,5 +1,6 @@
 import { parseBunkerInput, BunkerSigner, createNostrConnectURI } from 'nostr-tools/nip46';
 import { generateSecretKey, getPublicKey } from 'nostr-tools/pure';
+import { nip04, nip44 } from 'nostr-tools';
 
 export interface NostrEvent {
   id?: string;
@@ -210,7 +211,7 @@ export interface NostrConnectSession {
 }
 
 export function startNostrConnectSession(
-  relays: string[] = ['wss://relay.damus.io', 'wss://nos.lol'],
+  relays: string[] = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.nostr.band', 'wss://relay.primal.net', 'wss://purplepag.es'],
   onAuthCallback?: (authUrl: string) => void
 ): NostrConnectSession {
   const clientSecretKey = generateSecretKey();
@@ -221,7 +222,7 @@ export function startNostrConnectSession(
 
   const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://watchlistr.app';
 
-  const uri = createNostrConnectURI({
+  const rawUri = createNostrConnectURI({
     clientPubkey,
     relays,
     secret: secretHex,
@@ -229,6 +230,10 @@ export function startNostrConnectSession(
     url: appOrigin,
     perms: ['get_public_key', 'sign_event:30016', 'sign_event:10016', 'sign_event:30007']
   });
+
+  const uri = rawUri
+    .replace(/relay=wss%3A%2F%2F/g, 'relay=wss://')
+    .replace(/relay=ws%3A%2F%2F/g, 'relay=ws://');
 
   const bunkerParams: any = {
     onauth: (authUrl: string) => {
@@ -244,34 +249,116 @@ export function startNostrConnectSession(
   };
 
   const listen = async (): Promise<BunkerNip46Signer> => {
-    let timeoutId: any;
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(() => {
-        reject(new Error("Nostr Connect session timed out after 2 minutes. Please try again."));
+    return new Promise<BunkerNip46Signer>((resolve, reject) => {
+      let isSettled = false;
+      const signer = new (BunkerSigner as any)(clientSecretKey, bunkerParams);
+
+      const timeoutId = setTimeout(() => {
+        if (!isSettled) {
+          isSettled = true;
+          try { sub.close(); } catch (_e) {}
+          reject(new Error("Nostr Connect session timed out after 2 minutes. Please check your signer app."));
+        }
       }, 120000);
+
+      // Subscribe to NostrConnect response events (#p: clientPubkey)
+      const sub = signer.pool.subscribe(
+        relays,
+        {
+          kinds: [24133],
+          "#p": [clientPubkey],
+          limit: 0
+        },
+        {
+          onevent: async (event: any) => {
+            if (isSettled) return;
+            try {
+              let response: any = null;
+              // 1. Try NIP-04 decryption (used by Clave and traditional iOS signers)
+              try {
+                const decrypted04 = nip04.decrypt(clientSecretKey, event.pubkey, event.content);
+                response = JSON.parse(decrypted04);
+              } catch (_e) {
+                // 2. Try NIP-44 decryption fallback (used by Amber and newer NIP-46 signers)
+                try {
+                  const convKey = nip44.getConversationKey(clientSecretKey, event.pubkey);
+                  const decrypted44 = nip44.decrypt(event.content, convKey);
+                  response = JSON.parse(decrypted44);
+                } catch (_err) {}
+              }
+
+              if (!response) return;
+
+              console.log("NIP-46 response received:", response, "from pubkey:", event.pubkey);
+
+              // Handle onauth challenge URL
+              if (response.result === 'auth_url' || response.error?.startsWith('http://') || response.error?.startsWith('https://')) {
+                const authUrl = response.error || response.result;
+                if (bunkerParams.onauth) {
+                  bunkerParams.onauth(authUrl);
+                }
+              }
+
+              // Accept response if result === secret OR result === 'ack' OR id === secret OR result is truthy without error
+              const isMatch = response.result === secretHex ||
+                              response.result === 'ack' ||
+                              response.id === secretHex ||
+                              (response.result && response.result !== 'auth_url' && !response.error);
+
+              if (isMatch) {
+                isSettled = true;
+                clearTimeout(timeoutId);
+                try { sub.close(); } catch (_e) {}
+
+                signer.bp = {
+                  pubkey: event.pubkey,
+                  relays,
+                  secret: secretHex
+                };
+
+                try {
+                  signer.conversationKey = nip44.getConversationKey(clientSecretKey, event.pubkey);
+                } catch (_e) {}
+
+                signer.setupSubscription();
+
+                if (!bunkerParams.skipSwitchRelays) {
+                  await Promise.race([
+                    new Promise(r => setTimeout(r, 1000)),
+                    signer.switchRelays()
+                  ]);
+                }
+
+                // Fetch public key with 10s timeout, fallback to event.pubkey if needed
+                let pubkey = '';
+                try {
+                  pubkey = await Promise.race([
+                    signer.getPublicKey(),
+                    new Promise<string>((_, rej) => setTimeout(() => rej(new Error("Timed out fetching public key from remote signer (10s).")), 10000))
+                  ]);
+                } catch (err: any) {
+                  console.warn("Failed getPublicKey during connect, falling back to signer event pubkey:", err);
+                  pubkey = event.pubkey;
+                }
+
+                const bunkerUrl = `bunker://${signer.bp.pubkey}?${signer.bp.relays.map((r: string) => `relay=${encodeURIComponent(r)}`).join('&')}&secret=${signer.bp.secret || ''}`;
+
+                resolve(new BunkerNip46Signer(signer, clientSecretKeyHex, bunkerUrl, pubkey));
+              }
+            } catch (e) {
+              console.warn("Failed to process potential Nostr Connect event:", e);
+            }
+          },
+          onclose: () => {
+            if (!isSettled) {
+              isSettled = true;
+              clearTimeout(timeoutId);
+              reject(new Error("Relay subscription closed before Nostr Connect session was established."));
+            }
+          }
+        }
+      );
     });
-
-    try {
-      const bunkerSigner = await Promise.race([
-        BunkerSigner.fromURI(clientSecretKey, uri, bunkerParams, 120000),
-        timeoutPromise
-      ]);
-      clearTimeout(timeoutId);
-
-      const pubkey = await Promise.race([
-        bunkerSigner.getPublicKey(),
-        new Promise<string>((_, reject) =>
-          setTimeout(() => reject(new Error("Timed out fetching public key from remote signer (10s).")), 10000)
-        )
-      ]);
-
-      const bunkerUrl = `bunker://${bunkerSigner.bp.pubkey}?${bunkerSigner.bp.relays.map(r => `relay=${encodeURIComponent(r)}`).join('&')}&secret=${bunkerSigner.bp.secret || ''}`;
-
-      return new BunkerNip46Signer(bunkerSigner, clientSecretKeyHex, bunkerUrl, pubkey);
-    } catch (err) {
-      clearTimeout(timeoutId);
-      throw err;
-    }
   };
 
   return { uri, clientSecretKeyHex, listen };
