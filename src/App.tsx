@@ -23,7 +23,9 @@ import {
   Copy,
   Settings,
   LogOut,
-  Upload
+  Upload,
+  Sparkles,
+  Download
 } from 'lucide-react';
 import {
   NostrService,
@@ -102,6 +104,14 @@ const cleanListTitle = (title: string): string => {
 
 const isDefaultList = (list: { id: string }): boolean => {
   return list.id === 'watchlist:default' || list.id === 'watched:default' || list.id.endsWith(':default');
+};
+
+const detectDeviceType = (): 'android' | 'ios' | 'desktop' => {
+  if (typeof navigator === 'undefined') return 'desktop';
+  const ua = navigator.userAgent || navigator.vendor || (window as any).opera || '';
+  if (/android/i.test(ua)) return 'android';
+  if (/iPad|iPhone|iPod/.test(ua) && !(window as any).MSStream) return 'ios';
+  return 'desktop';
 };
 
 const renderListTitle = (list: { id: string; title: string }) => {
@@ -231,6 +241,14 @@ function App() {
   // Connection & Settings modal states
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+
+  // Unauthenticated page state ('landing' or 'login')
+  const [unauthPage, setUnauthPage] = useState<'landing' | 'login'>('landing');
+
+  // Guided Onboarding Wizard state
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(1);
+  const [onboardingDesktopDevice, setOnboardingDesktopDevice] = useState<'android' | 'ios' | null>(null);
 
   // Profile Edit state & Deferred Upload with Interactive Crop & Zoom
   const [profileEditName, setProfileEditName] = useState('');
@@ -1127,18 +1145,24 @@ function App() {
     }
   };
 
-  // Sync profile edit inputs when Connection modal opens
+  // Sync profile edit inputs when Connection modal or Onboarding Step 4 (Profile Setup) is active,
+  // or when nostrUser.name / nostrUser.picture updates from relays asynchronously.
   useEffect(() => {
-    if (isConnectionModalOpen && nostrUser) {
-      setProfileEditName(nostrUser.name || '');
-      setProfileEditPicture(nostrUser.picture || '');
-      setSelectedImageFile(null);
-      setCropZoom(1);
-      setCropOffset({ x: 0, y: 0 });
-      setProfileStatus(null);
-      setPublishingStep(null);
+    const isEditingProfile = isConnectionModalOpen || (isOnboardingOpen && onboardingStep === 4);
+    if (isEditingProfile && nostrUser) {
+      setProfileEditName(prev => prev || nostrUser.name || '');
+      if (!selectedImageFile) {
+        setProfileEditPicture(nostrUser.picture || '');
+      }
     }
-  }, [isConnectionModalOpen, nostrUser]);
+  }, [isConnectionModalOpen, isOnboardingOpen, onboardingStep, nostrUser, nostrUser?.name, nostrUser?.picture]);
+
+  // Auto-advance onboarding to Step 4 (Profile Setup) when connected in Step 3
+  useEffect(() => {
+    if (isOnboardingOpen && onboardingStep === 3 && nostrUser) {
+      setOnboardingStep(4);
+    }
+  }, [isOnboardingOpen, onboardingStep, nostrUser]);
 
   // Select local image file for deferred upload & cropping
   const handleFileSelection = (file: File) => {
@@ -1880,27 +1904,117 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* VIEW 1: LANDING PAGE (Unauthenticated / Sign-In Only) */}
+      {/* VIEW 1: LANDING PAGE VS LEGACY LOGIN PAGE */}
       {!nostrUser ? (
         <div className="hub-layout">
-          <div className="hub-hero">
-            <h1 className="landing-logo" id="main-title" style={{ fontSize: '3rem', marginBottom: '0.2rem' }}>Watchlistr</h1>
-            <p className="landing-tagline" style={{ margin: 0, fontSize: '1.1rem' }}>
-              <a href="#" style={{ color: 'inherit', textDecoration: 'none' }}>Powered</a> by{' '}
-              <a
-                href="https://github.com/nostr-protocol/nostr"
-                target="_blank"
-                rel="noreferrer"
-                style={{ color: 'var(--accent-color)', textDecoration: 'underline' }}
-              >
-                Nostr
-              </a>
-            </p>
+          {unauthPage === 'landing' ? (
+            /* PAGE 1: THE LANDING PAGE (WELCOME INTRO ONLY) */
+            <div className="hub-hero">
+              <h1 className="landing-logo" id="main-title" style={{ fontSize: '3.2rem', marginBottom: '0.2rem' }}>Watchlistr</h1>
+              <p className="landing-tagline" style={{ margin: 0, fontSize: '1.1rem' }}>
+                <a href="#" style={{ color: 'inherit', textDecoration: 'none' }}>Powered</a> by{' '}
+                <a
+                  href="https://github.com/nostr-protocol/nostr"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ color: 'var(--accent-color)', textDecoration: 'underline' }}
+                >
+                  Nostr
+                </a>
+              </p>
 
-            {/* Multi-Tab Nostr Auth Card */}
-            <div style={{ width: '100%', maxWidth: '540px', margin: '1.5rem auto' }}>
-              <div className="plugin-notice-card" style={{ flexDirection: 'column', gap: '0.75rem', padding: '1.25rem' }}>
-                <div className="auth-tabs" style={{ width: '100%', justifyContent: 'center' }}>
+              {/* Landing Intro Card */}
+              <div style={{
+                width: '100%',
+                maxWidth: '540px',
+                margin: '1.75rem auto 0 auto',
+                padding: '1.75rem',
+                backgroundColor: 'var(--bg-secondary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 'var(--radius-lg)',
+                boxShadow: 'var(--shadow-xl)',
+                textAlign: 'center',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '1.25rem'
+              }}>
+                <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                  Your Movies & TV Shows, Completely Yours 🍿
+                </div>
+                
+                <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-secondary)', lineHeight: 1.55, maxWidth: '460px' }}>
+                  Watchlistr is built on <strong>Nostr</strong> — an open protocol designed around true digital property rights. That means your watchlists, ratings, and profile belong <strong>100% to you</strong>, not to a central server or to us! You sign in independently with your own key manager.
+                </p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', width: '100%', alignItems: 'center', marginTop: '0.5rem' }}>
+                  <button
+                    className="btn btn-primary"
+                    type="button"
+                    onClick={() => {
+                      const dev = detectDeviceType();
+                      setOnboardingDesktopDevice(null);
+                      setIsOnboardingOpen(true);
+                      if (dev === 'android') {
+                        setOnboardingStep(2);
+                      } else {
+                        setOnboardingStep(1);
+                      }
+                    }}
+                    style={{
+                      padding: '0.85rem 1.75rem',
+                      fontSize: '1.05rem',
+                      fontWeight: 700,
+                      width: '100%',
+                      maxWidth: '360px',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 14px rgba(99, 102, 241, 0.35)'
+                    }}
+                  >
+                    <Sparkles size={18} /> New to Nostr? Guided Setup
+                  </button>
+
+                  <button
+                    className="btn"
+                    type="button"
+                    onClick={() => setUnauthPage('login')}
+                    style={{
+                      padding: '0.65rem 1.25rem',
+                      fontSize: '0.9rem',
+                      color: 'var(--text-secondary)',
+                      textDecoration: 'underline',
+                      border: 'none',
+                      backgroundColor: 'transparent',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    I know what I'm doing, show me the login options
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* PAGE 2: LEGACY DIRECT LOGIN PAGE (AUTH TABS ONLY) */
+            <div className="hub-hero">
+              <div style={{ width: '100%', maxWidth: '540px', margin: '0 auto 1rem auto', display: 'flex', justifyContent: 'flex-start' }}>
+                <button
+                  className="btn btn-small"
+                  onClick={() => setUnauthPage('landing')}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <ArrowLeft size={16} /> Back to Welcome Page
+                </button>
+              </div>
+
+              <h1 className="landing-logo" style={{ fontSize: '2.5rem', marginBottom: '0.2rem' }}>Sign In to Watchlistr</h1>
+              <p style={{ margin: '0 0 1.25rem 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                Direct authentication for experienced Nostr users, browser extensions, or iOS devices.
+              </p>
+
+              {/* Multi-Tab Nostr Auth Card */}
+              <div style={{ width: '100%', maxWidth: '540px', margin: '0 auto' }}>
+                <div className="plugin-notice-card" style={{ flexDirection: 'column', gap: '0.75rem', padding: '1.25rem', width: '100%' }}>
+                  <div className="auth-tabs" style={{ width: '100%', justifyContent: 'center' }}>
                   <button
                     className={`auth-tab ${activeAuthTab === 'bunker' ? 'active' : ''}`}
                     onClick={() => setActiveAuthTab('bunker')}
@@ -2092,8 +2206,9 @@ function App() {
               </div>
             </div>
           </div>
-        </div>
-      ) : !selectedListId ? (
+        )}
+      </div>
+    ) : !selectedListId ? (
         /* VIEW 2: DASHBOARD HUB (Authenticated) */
         <div className="hub-layout">
           {/* Top User Profile Header */}
@@ -3796,6 +3911,475 @@ function App() {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {/* GUIDED ONBOARDING WIZARD MODAL */}
+      {isOnboardingOpen && (
+        <div className="modal-overlay" onClick={() => { if (onboardingStep !== 4) setIsOnboardingOpen(false); }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '520px' }}>
+            
+            {/* Modal Header & Progress Indicator */}
+            <div className="modal-header" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Sparkles size={20} style={{ color: 'var(--accent-color)' }} />
+                <h3 className="modal-title" style={{ margin: 0, fontSize: '1.2rem' }}>
+                  Nostr Setup Guide
+                </h3>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-color)', backgroundColor: 'var(--accent-color-light)', padding: '2px 8px', borderRadius: 'var(--radius-sm)' }}>
+                  Step {onboardingStep} of 4
+                </span>
+              </div>
+              <button
+                className="btn btn-action-icon"
+                onClick={() => setIsOnboardingOpen(false)}
+                title="Exit Onboarding"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', padding: '0.5rem 0' }}>
+              
+              {/* STEP 1: DEVICE SELECTION (DESKTOP / IOS NOTICE) */}
+              {onboardingStep === 1 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  {onboardingDesktopDevice === 'ios' || detectDeviceType() === 'ios' ? (
+                    <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }}>
+                      <Smartphone size={40} style={{ color: 'var(--accent-color)' }} />
+                      <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>iPhone & iPad Guidance Coming Soon</div>
+                      <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                        We currently recommend an <strong>Android device (with Amber)</strong> or a <strong>Desktop Computer</strong> for the easiest onboarding experience.
+                      </p>
+                      <button
+                        className="btn btn-primary"
+                        style={{ width: '100%', justifyContent: 'center', padding: '0.75rem', marginTop: '0.5rem' }}
+                        onClick={() => {
+                          setUnauthPage('login');
+                          setIsOnboardingOpen(false);
+                        }}
+                      >
+                        Show Direct Login Options
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', textAlign: 'center' }}>
+                      <div style={{ fontSize: '1.1rem', fontWeight: 800 }}>What mobile device do you have?</div>
+                      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                        We will pair Watchlistr with a secure mobile signer app on your phone.
+                      </p>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.5rem' }}>
+                        <button
+                          className="btn"
+                          style={{
+                            flexDirection: 'column',
+                            padding: '1.25rem',
+                            gap: '0.5rem',
+                            border: '2px solid var(--accent-color)',
+                            backgroundColor: 'var(--bg-secondary)',
+                            alignItems: 'center'
+                          }}
+                          onClick={() => {
+                            setOnboardingDesktopDevice('android');
+                            setOnboardingStep(2);
+                          }}
+                        >
+                          <Smartphone size={28} style={{ color: 'var(--accent-color)' }} />
+                          <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>Android Phone</span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Recommended (Amber)</span>
+                        </button>
+
+                        <button
+                          className="btn"
+                          style={{
+                            flexDirection: 'column',
+                            padding: '1.25rem',
+                            gap: '0.5rem',
+                            border: '1px solid var(--border-color)',
+                            backgroundColor: 'var(--bg-secondary)',
+                            alignItems: 'center'
+                          }}
+                          onClick={() => setOnboardingDesktopDevice('ios')}
+                        >
+                          <Smartphone size={28} style={{ color: 'var(--text-secondary)' }} />
+                          <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>iPhone / iPad</span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>iOS Notice</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* STEP 2: INSTALL A SIGNER APP */}
+              {onboardingStep === 2 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', textAlign: 'center', alignItems: 'center' }}>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>Install a Nostr Signer App</div>
+                  <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.45, maxWidth: '460px' }}>
+                    To use Watchlistr safely, you need a mobile <strong>signer app</strong> on your phone. A signer holds your cryptographic keys securely so you never have to type passwords into websites. On Android, we recommend <strong>Amber</strong>.
+                  </p>
+
+                  {detectDeviceType() === 'android' ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%', alignItems: 'center' }}>
+                      <a
+                        href="https://github.com/greenart7c3/Amber/releases/latest"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn btn-primary"
+                        style={{ width: '100%', maxWidth: '340px', padding: '0.75rem', justifyContent: 'center', textDecoration: 'none', color: '#ffffff', fontWeight: 700 }}
+                      >
+                        <Download size={18} /> Open Amber Releases (GitHub)
+                      </a>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'center' }}>
+                      <div style={{ backgroundColor: '#ffffff', padding: '10px', borderRadius: 'var(--radius-md)', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+                        <img
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent('https://github.com/greenart7c3/Amber/releases/latest')}`}
+                          alt="Amber Release QR Code"
+                          width={160}
+                          height={160}
+                          style={{ display: 'block' }}
+                        />
+                      </div>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                        Scan with your Android camera to open Amber Releases
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Quick installation & APK selection guidance box */}
+                  <div style={{
+                    width: '100%',
+                    backgroundColor: 'var(--bg-secondary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '0.85rem 1rem',
+                    textAlign: 'left',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.5rem'
+                  }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Next steps on the Amber release page:
+                    </div>
+                    <ol style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                      <li>Look under <strong>Assets</strong> at the bottom of the latest release.</li>
+                      <li>
+                        Choose which <code>.apk</code> to download:
+                        <ul style={{ margin: '0.2rem 0', paddingLeft: '1rem', listStyleType: 'disc' }}>
+                          <li>Download <code>amber-arm64-v...apk</code> for modern Android phones.</li>
+                          <li>Or download <code>amber-fdroid-universal-v...apk</code> if you're not sure!</li>
+                        </ul>
+                      </li>
+                      <li>Install the APK and open Amber to create your new Nostr identity (key pair).</li>
+                      <li>Once your identity is created in Amber, return here and click the button below.</li>
+                    </ol>
+                  </div>
+
+                  <button
+                    className="btn btn-primary"
+                    style={{ width: '100%', justifyContent: 'center', padding: '0.75rem', marginTop: '0.25rem', fontWeight: 700 }}
+                    onClick={() => {
+                      handleStartNostrConnect();
+                      setOnboardingStep(3);
+                    }}
+                  >
+                    I have my signer ready →
+                  </button>
+                </div>
+              )}
+
+              {/* STEP 3: NOSTR CONNECT PAIRING */}
+              {onboardingStep === 3 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', textAlign: 'center', alignItems: 'center' }}>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>Connect Watchlistr to Amber</div>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                    Authorize Watchlistr to communicate with Amber via Nostr Connect (NIP-46).
+                  </p>
+
+                  {nostrConnectUri ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center', width: '100%' }}>
+                      {detectDeviceType() === 'android' ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}>
+                          <a
+                            href={nostrConnectUri}
+                            className="btn btn-primary"
+                            style={{ width: '100%', padding: '0.85rem', justifyContent: 'center', textDecoration: 'none', color: '#ffffff', fontWeight: 700, fontSize: '1rem' }}
+                          >
+                            <Smartphone size={18} /> Open in Amber App
+                          </a>
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => {
+                              navigator.clipboard.writeText(nostrConnectUri);
+                              alert("Connection URI copied to clipboard!");
+                            }}
+                            style={{ width: '100%', justifyContent: 'center' }}
+                          >
+                            <Copy size={14} /> Copy Connection URI
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'center', width: '100%' }}>
+                          <div style={{ backgroundColor: '#ffffff', padding: '10px', borderRadius: 'var(--radius-md)', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+                            <img
+                              src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(nostrConnectUri)}`}
+                              alt="NostrConnect QR Code"
+                              width={180}
+                              height={180}
+                              style={{ display: 'block' }}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-small"
+                            onClick={() => {
+                              navigator.clipboard.writeText(nostrConnectUri);
+                              alert("Connection code copied!");
+                            }}
+                          >
+                            <Copy size={14} /> Copy Connection Code
+                          </button>
+                        </div>
+                      )}
+
+                      <div style={{ fontSize: '0.85rem', color: 'var(--accent-color)', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
+                        <RefreshCw size={16} className="spin" />
+                        Waiting for authorization in Amber...
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      className="btn btn-primary"
+                      onClick={handleStartNostrConnect}
+                      style={{ width: '100%', justifyContent: 'center', padding: '0.75rem' }}
+                    >
+                      Generate Connection URI
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* STEP 4: BUILT-IN PROFILE SETUP (GLORIOUS STEP!) */}
+              {onboardingStep === 4 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 800 }}>Connected! Set Up Your Profile 🎨</div>
+                    <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                      Give yourself a display name and profile picture so your friends can discover your watchlists.
+                    </p>
+                  </div>
+
+                  <form onSubmit={async (e) => {
+                    await handlePublishProfile(e);
+                    setIsOnboardingOpen(false);
+                  }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    
+                    {/* Crop & Dropzone */}
+                    <div
+                      onDragOver={(e) => { e.preventDefault(); setIsDraggingAvatar(true); }}
+                      onDragLeave={() => setIsDraggingAvatar(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDraggingAvatar(false);
+                        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                          handleFileSelection(e.dataTransfer.files[0]);
+                        }
+                      }}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '1rem',
+                        border: isDraggingAvatar ? '2px dashed var(--accent-color)' : '1px dashed var(--border-color)',
+                        backgroundColor: isDraggingAvatar ? 'var(--accent-color-light)' : 'var(--bg-secondary)',
+                        borderRadius: 'var(--radius-md)',
+                        gap: '0.75rem',
+                        textAlign: 'center'
+                      }}
+                    >
+                      {selectedImageFile ? (
+                        <div
+                          style={{
+                            width: '120px',
+                            height: '120px',
+                            borderRadius: '50%',
+                            overflow: 'hidden',
+                            position: 'relative',
+                            border: '3px solid var(--accent-color)',
+                            cursor: isDraggingPhoto ? 'grabbing' : 'grab',
+                            userSelect: 'none',
+                            touchAction: 'none'
+                          }}
+                          onMouseDown={(e) => {
+                            setIsDraggingPhoto(true);
+                            dragStartRef.current = { x: e.clientX - cropOffset.x, y: e.clientY - cropOffset.y };
+                          }}
+                          onMouseMove={(e) => {
+                            if (!isDraggingPhoto) return;
+                            setCropOffset({
+                              x: e.clientX - dragStartRef.current.x,
+                              y: e.clientY - dragStartRef.current.y
+                            });
+                          }}
+                          onMouseUp={() => setIsDraggingPhoto(false)}
+                          onMouseLeave={() => setIsDraggingPhoto(false)}
+                          onTouchStart={(e) => {
+                            if (e.touches[0]) {
+                              setIsDraggingPhoto(true);
+                              dragStartRef.current = { x: e.touches[0].clientX - cropOffset.x, y: e.touches[0].clientY - cropOffset.y };
+                            }
+                          }}
+                          onTouchMove={(e) => {
+                            if (isDraggingPhoto && e.touches[0]) {
+                              setCropOffset({
+                                x: e.touches[0].clientX - dragStartRef.current.x,
+                                y: e.touches[0].clientY - dragStartRef.current.y
+                              });
+                            }
+                          }}
+                          onTouchEnd={() => setIsDraggingPhoto(false)}
+                        >
+                          <img
+                            src={profileEditPicture}
+                            alt="Crop Preview"
+                            draggable={false}
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover',
+                              transform: `translate(${cropOffset.x}px, ${cropOffset.y}px) scale(${cropZoom})`,
+                              transformOrigin: 'center',
+                              pointerEvents: 'none'
+                            }}
+                          />
+                        </div>
+                      ) : profileEditPicture ? (
+                        <img
+                          src={profileEditPicture}
+                          alt="Avatar"
+                          style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--accent-color)' }}
+                        />
+                      ) : (
+                        <div className="profile-avatar-fallback" style={{ width: '64px', height: '64px', fontSize: '1.75rem' }}>
+                          {(profileEditName || 'A').substring(0, 1).toUpperCase()}
+                        </div>
+                      )}
+
+                      {selectedImageFile ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center', width: '100%' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', maxWidth: '220px' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Zoom</span>
+                            <input
+                              type="range"
+                              min="1"
+                              max="3"
+                              step="0.05"
+                              value={cropZoom}
+                              onChange={(e) => setCropZoom(parseFloat(e.target.value))}
+                              style={{ flex: 1, accentColor: 'var(--accent-color)' }}
+                            />
+                          </div>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--accent-color)', fontWeight: 600 }}>
+                            Drag photo to center • Use slider to zoom
+                          </span>
+                        </div>
+                      ) : (
+                        <label className="btn btn-small btn-primary" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          <Upload size={14} /> Choose Photo
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleFileSelection(e.target.files[0]);
+                              }
+                            }}
+                            style={{ display: 'none' }}
+                          />
+                        </label>
+                      )}
+                    </div>
+
+                    {/* Name Input */}
+                    <div className="modal-field">
+                      <label className="modal-label">Display Name</label>
+                      <input
+                        type="text"
+                        className="input-field"
+                        placeholder="e.g. Satoshi"
+                        value={profileEditName}
+                        onChange={(e) => setProfileEditName(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    {profileStatus && (
+                      <div style={{ fontSize: '0.85rem', color: profileStatus.type === 'success' ? '#15803d' : '#ef4444' }}>
+                        {profileStatus.message}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '10px', marginTop: '0.5rem' }}>
+                      <button
+                        type="button"
+                        className="btn"
+                        style={{ flex: 1, justifyContent: 'center' }}
+                        onClick={() => setIsOnboardingOpen(false)}
+                      >
+                        Skip for Now
+                      </button>
+                      <button
+                        type="submit"
+                        className="btn btn-primary"
+                        disabled={isPublishingProfile}
+                        style={{ flex: 2, justifyContent: 'center', padding: '0.75rem', fontWeight: 700 }}
+                      >
+                        {isPublishingProfile ? (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                            <RefreshCw size={16} className="spin" />
+                            {publishingStep === 'uploading' ? 'Uploading Photo...' : 'Publishing Profile...'}
+                          </span>
+                        ) : (
+                          'Save Profile & Start Watching!'
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+            </div>
+
+            {/* Wizard Navigation Footer */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem', marginTop: '0.5rem' }}>
+              {onboardingStep > 1 && onboardingStep < 4 ? (
+                <button
+                  className="btn btn-small"
+                  onClick={() => setOnboardingStep(prev => Math.max(1, prev - 1))}
+                >
+                  ← Back
+                </button>
+              ) : (
+                <div></div>
+              )}
+
+              <button
+                className="btn btn-small"
+                onClick={() => {
+                  setUnauthPage('login');
+                  setIsOnboardingOpen(false);
+                }}
+                style={{ color: 'var(--text-tertiary)' }}
+              >
+                Skip to Login
+              </button>
+            </div>
+
           </div>
         </div>
       )}
