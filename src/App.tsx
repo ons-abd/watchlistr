@@ -81,6 +81,26 @@ interface NostrUser {
   bunkerClientSk?: string;
 }
 
+// 1-10 Rating Scale Emojis & Labels
+const RATING_EMOJIS: Record<number, { emoji: string; label: string }> = {
+  1: { emoji: '🤮', label: 'Vomiting' },
+  2: { emoji: '🤢', label: 'Nauseous' },
+  3: { emoji: '🥱', label: 'Boring' },
+  4: { emoji: '🙄', label: 'Meh' },
+  5: { emoji: '🙂', label: 'Slight Smile' },
+  6: { emoji: '😊', label: 'Warm Smile' },
+  7: { emoji: '😃', label: 'Good' },
+  8: { emoji: '😍', label: 'Heart Eyes' },
+  9: { emoji: '🤩', label: 'Star-struck' },
+  10: { emoji: '🤯', label: 'Mind Blown' },
+};
+
+const getRatingEmoji = (rating: number | undefined): string => {
+  if (rating === undefined || isNaN(rating)) return '⭐';
+  const rounded = Math.min(Math.max(Math.round(rating), 1), 10);
+  return RATING_EMOJIS[rounded]?.emoji || '⭐';
+};
+
 // Render director or creator info cleanly below title, with production year
 const renderDirectorCreator = (item: Media) => {
   const creatorOrDirector = item.type === 'movie' ? item.director : item.creator;
@@ -138,7 +158,7 @@ function App() {
           ...l,
           title: cleanListTitle(l.title)
         }));
-      } catch (e) {}
+      } catch (e) { }
     }
 
     const savedWatchlist = localStorage.getItem('watchlistr_watchlist');
@@ -580,7 +600,7 @@ function App() {
     if (activeSignerRef.current && 'close' in activeSignerRef.current) {
       try {
         (activeSignerRef.current as BunkerNip46Signer).close();
-      } catch (e) {}
+      } catch (e) { }
     }
     activeSignerRef.current = null;
     setNostrUser(null);
@@ -744,7 +764,7 @@ function App() {
             name: meta.display_name || meta.name || meta.username,
             picture: meta.picture
           } : null);
-        } catch (e) {}
+        } catch (e) { }
       }
 
       // 3. Fetch followed pubkeys (kind:10016)
@@ -815,7 +835,7 @@ function App() {
                 picture: meta.picture
               }
             }));
-          } catch (e) {}
+          } catch (e) { }
         }
       }
     });
@@ -937,7 +957,7 @@ function App() {
                 picture: meta.picture
               }
             }));
-          } catch (e) {}
+          } catch (e) { }
         }
       });
 
@@ -1262,7 +1282,7 @@ function App() {
       if (existingProfileEvent?.content) {
         try {
           existingMeta = JSON.parse(existingProfileEvent.content);
-        } catch (err) {}
+        } catch (err) { }
       }
 
       const updatedMeta = {
@@ -1318,7 +1338,7 @@ function App() {
           }
         }
       }
-    } catch (e) {}
+    } catch (e) { }
     return undefined;
   };
 
@@ -1591,7 +1611,7 @@ function App() {
       year: parts[0] || '',
       month: parts[1] || '',
       day: parts[2] || '',
-      rating: item.userRating !== undefined ? Math.round(item.userRating).toString() : '8',
+      rating: item.userRating !== undefined ? item.userRating.toString() : '8',
       sourceList,
       targetListId: validWatchedId
     });
@@ -1611,7 +1631,7 @@ function App() {
       }
     }
 
-    const ratingNum = parseInt(logModal.rating, 10);
+    const ratingNum = parseFloat(logModal.rating);
     const updatedItem: Media = {
       ...logModal.item,
       watchedDate: dateStr || undefined,
@@ -1942,7 +1962,7 @@ function App() {
                 <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--text-primary)' }}>
                   Your Movies & TV Shows, Completely Yours 🍿
                 </div>
-                
+
                 <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-secondary)', lineHeight: 1.55, maxWidth: '460px' }}>
                   Watchlistr is built on <strong>Nostr</strong> — an open protocol designed around true digital property rights. That means your watchlists, ratings, and profile belong <strong>100% to you</strong>, not to a central server or to us! You sign in independently with your own key manager.
                 </p>
@@ -2015,200 +2035,200 @@ function App() {
               <div style={{ width: '100%', maxWidth: '540px', margin: '0 auto' }}>
                 <div className="plugin-notice-card" style={{ flexDirection: 'column', gap: '0.75rem', padding: '1.25rem', width: '100%' }}>
                   <div className="auth-tabs" style={{ width: '100%', justifyContent: 'center' }}>
-                  <button
-                    className={`auth-tab ${activeAuthTab === 'bunker' ? 'active' : ''}`}
-                    onClick={() => setActiveAuthTab('bunker')}
-                  >
-                    <Smartphone size={16} /> Remote Signer (NIP-46)
-                  </button>
-                  <button
-                    className={`auth-tab ${activeAuthTab === 'extension' ? 'active' : ''}`}
-                    onClick={() => setActiveAuthTab('extension')}
-                  >
-                    <Check size={16} /> Extension (NIP-07)
-                  </button>
-                  <button
-                    className={`auth-tab ${activeAuthTab === 'readonly' ? 'active' : ''}`}
-                    onClick={() => setActiveAuthTab('readonly')}
-                  >
-                    <Key size={16} /> Read-Only
-                  </button>
-                </div>
+                    <button
+                      className={`auth-tab ${activeAuthTab === 'bunker' ? 'active' : ''}`}
+                      onClick={() => setActiveAuthTab('bunker')}
+                    >
+                      <Smartphone size={16} /> Remote Signer (NIP-46)
+                    </button>
+                    <button
+                      className={`auth-tab ${activeAuthTab === 'extension' ? 'active' : ''}`}
+                      onClick={() => setActiveAuthTab('extension')}
+                    >
+                      <Check size={16} /> Extension (NIP-07)
+                    </button>
+                    <button
+                      className={`auth-tab ${activeAuthTab === 'readonly' ? 'active' : ''}`}
+                      onClick={() => setActiveAuthTab('readonly')}
+                    >
+                      <Key size={16} /> Read-Only
+                    </button>
+                  </div>
 
-                {activeAuthTab === 'bunker' ? (
-                  <div style={{ textAlign: 'left', width: '100%' }}>
-                    <div style={{ display: 'flex', gap: '8px', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
-                      <button
-                        type="button"
-                        className={`btn btn-small ${bunkerSubMode === 'nostrconnect' ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={() => { setBunkerSubMode('nostrconnect'); setBunkerError(null); }}
-                        style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.8rem' }}
-                      >
-                        <Smartphone size={14} /> Nostr Connect (QR / Link)
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn btn-small ${bunkerSubMode === 'manual' ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={() => { setBunkerSubMode('manual'); setBunkerError(null); }}
-                        style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.8rem' }}
-                      >
-                        <Key size={14} /> Bunker URI
-                      </button>
-                    </div>
+                  {activeAuthTab === 'bunker' ? (
+                    <div style={{ textAlign: 'left', width: '100%' }}>
+                      <div style={{ display: 'flex', gap: '8px', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+                        <button
+                          type="button"
+                          className={`btn btn-small ${bunkerSubMode === 'nostrconnect' ? 'btn-primary' : 'btn-secondary'}`}
+                          onClick={() => { setBunkerSubMode('nostrconnect'); setBunkerError(null); }}
+                          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.8rem' }}
+                        >
+                          <Smartphone size={14} /> Nostr Connect (QR / Link)
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn btn-small ${bunkerSubMode === 'manual' ? 'btn-primary' : 'btn-secondary'}`}
+                          onClick={() => { setBunkerSubMode('manual'); setBunkerError(null); }}
+                          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.8rem' }}
+                        >
+                          <Key size={14} /> Bunker URI
+                        </button>
+                      </div>
 
-                    {bunkerSubMode === 'nostrconnect' ? (
-                      <div style={{ textAlign: 'center', padding: '0.25rem 0' }}>
-                        {!nostrConnectUri && !isNostrConnectListening ? (
-                          <div>
-                            <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                              Scan a QR code or tap the deep link using a compatible remote signer.
-                            </p>
-                            <button
-                              className="btn btn-primary btn-large"
-                              type="button"
-                              onClick={handleStartNostrConnect}
-                              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-                            >
-                              <Smartphone size={18} /> Start Nostr Connect Session
-                            </button>
-                          </div>
-                        ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-                            <div style={{ backgroundColor: '#ffffff', padding: '10px', borderRadius: 'var(--radius-md)', display: 'inline-block', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
-                              <img
-                                src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(nostrConnectUri || '')}`}
-                                alt="Nostr Connect QR Code"
-                                width={180}
-                                height={180}
-                                style={{ display: 'block' }}
-                              />
-                            </div>
-                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span style={{ width: '8px', height: '8px', backgroundColor: '#3b82f6', borderRadius: '50%', display: 'inline-block', animation: 'pulse 1.5s infinite' }}></span>
-                              Waiting for remote signer authorization...
-                            </div>
-                            <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
-                              <a
-                                href={nostrConnectUri || '#'}
-                                className="btn btn-primary btn-small"
-                                style={{ flex: 1, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', color: '#ffffff' }}
+                      {bunkerSubMode === 'nostrconnect' ? (
+                        <div style={{ textAlign: 'center', padding: '0.25rem 0' }}>
+                          {!nostrConnectUri && !isNostrConnectListening ? (
+                            <div>
+                              <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                Scan a QR code or tap the deep link using a compatible remote signer.
+                              </p>
+                              <button
+                                className="btn btn-primary btn-large"
+                                type="button"
+                                onClick={handleStartNostrConnect}
+                                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
                               >
-                                <Smartphone size={14} /> Open Signer App
-                              </a>
+                                <Smartphone size={18} /> Start Nostr Connect Session
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+                              <div style={{ backgroundColor: '#ffffff', padding: '10px', borderRadius: 'var(--radius-md)', display: 'inline-block', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+                                <img
+                                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(nostrConnectUri || '')}`}
+                                  alt="Nostr Connect QR Code"
+                                  width={180}
+                                  height={180}
+                                  style={{ display: 'block' }}
+                                />
+                              </div>
+                              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ width: '8px', height: '8px', backgroundColor: '#3b82f6', borderRadius: '50%', display: 'inline-block', animation: 'pulse 1.5s infinite' }}></span>
+                                Waiting for remote signer authorization...
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                                <a
+                                  href={nostrConnectUri || '#'}
+                                  className="btn btn-primary btn-small"
+                                  style={{ flex: 1, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', color: '#ffffff' }}
+                                >
+                                  <Smartphone size={14} /> Open Signer App
+                                </a>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-small"
+                                  onClick={() => {
+                                    if (nostrConnectUri) {
+                                      navigator.clipboard.writeText(nostrConnectUri);
+                                      setCopiedLink(true);
+                                      setTimeout(() => setCopiedLink(false), 2000);
+                                    }
+                                  }}
+                                  style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                >
+                                  <Copy size={14} /> {copiedLink ? 'Copied!' : 'Copy'}
+                                </button>
+                              </div>
                               <button
                                 type="button"
                                 className="btn btn-secondary btn-small"
                                 onClick={() => {
-                                  if (nostrConnectUri) {
-                                    navigator.clipboard.writeText(nostrConnectUri);
-                                    setCopiedLink(true);
-                                    setTimeout(() => setCopiedLink(false), 2000);
-                                  }
+                                  setNostrConnectUri(null);
+                                  setIsNostrConnectListening(false);
                                 }}
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                style={{ fontSize: '0.75rem', opacity: 0.8 }}
                               >
-                                <Copy size={14} /> {copiedLink ? 'Copied!' : 'Copy'}
+                                Cancel
                               </button>
                             </div>
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-small"
-                              onClick={() => {
-                                setNostrConnectUri(null);
-                                setIsNostrConnectListening(false);
-                              }}
-                              style={{ fontSize: '0.75rem', opacity: 0.8 }}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        )}
+                          )}
 
-                        {bunkerError && (
-                          <div style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
-                            {bunkerError}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div>
-                        <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                          Paste a <code>bunker://</code> URI manually from your remote signer:
-                        </p>
-                        <form onSubmit={(e) => { e.preventDefault(); handleConnectBunker(bunkerInputUrl); }}>
-                          <textarea
-                            className="input-field"
-                            placeholder="bunker://<remote-signer-pubkey>?relay=wss://...&secret=..."
-                            rows={4}
-                            value={bunkerInputUrl}
-                            onChange={(e) => setBunkerInputUrl(e.target.value)}
-                            style={{ marginBottom: '0.5rem', fontFamily: 'monospace', fontSize: '0.85rem', resize: 'vertical', width: '100%', wordBreak: 'break-all' }}
-                            required
-                          />
-                          {authChallengeUrl && (
-                            <div style={{ backgroundColor: 'rgba(21, 128, 61, 0.15)', border: '1px solid #15803d', padding: '10px 14px', borderRadius: 'var(--radius-md)', marginBottom: '0.75rem', fontSize: '0.85rem' }}>
-                              <strong>🔑 Action Required in Signer App:</strong>
-                              <p style={{ margin: '4px 0 8px 0' }}>
-                                Please authorize the connection request in your remote signer application, or tap below:
-                              </p>
-                              <a href={authChallengeUrl} target="_blank" rel="noreferrer" className="btn btn-primary btn-small">
-                                Open Authorization Link
-                              </a>
+                          {bunkerError && (
+                            <div style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                              {bunkerError}
                             </div>
                           )}
-                          {bunkerError && (
-                            <div style={{ fontSize: '0.85rem', color: '#ef4444', marginBottom: '0.5rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239, 68, 68, 0.3)' }}>{bunkerError}</div>
-                          )}
-                          <button className="btn btn-primary btn-large" type="submit" disabled={bunkerConnecting} style={{ width: '100%' }}>
-                            {bunkerConnecting ? 'Connecting NIP-46 Bunker...' : 'Connect Remote Signer (NIP-46)'}
+                        </div>
+                      ) : (
+                        <div>
+                          <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                            Paste a <code>bunker://</code> URI manually from your remote signer:
+                          </p>
+                          <form onSubmit={(e) => { e.preventDefault(); handleConnectBunker(bunkerInputUrl); }}>
+                            <textarea
+                              className="input-field"
+                              placeholder="bunker://<remote-signer-pubkey>?relay=wss://...&secret=..."
+                              rows={4}
+                              value={bunkerInputUrl}
+                              onChange={(e) => setBunkerInputUrl(e.target.value)}
+                              style={{ marginBottom: '0.5rem', fontFamily: 'monospace', fontSize: '0.85rem', resize: 'vertical', width: '100%', wordBreak: 'break-all' }}
+                              required
+                            />
+                            {authChallengeUrl && (
+                              <div style={{ backgroundColor: 'rgba(21, 128, 61, 0.15)', border: '1px solid #15803d', padding: '10px 14px', borderRadius: 'var(--radius-md)', marginBottom: '0.75rem', fontSize: '0.85rem' }}>
+                                <strong>🔑 Action Required in Signer App:</strong>
+                                <p style={{ margin: '4px 0 8px 0' }}>
+                                  Please authorize the connection request in your remote signer application, or tap below:
+                                </p>
+                                <a href={authChallengeUrl} target="_blank" rel="noreferrer" className="btn btn-primary btn-small">
+                                  Open Authorization Link
+                                </a>
+                              </div>
+                            )}
+                            {bunkerError && (
+                              <div style={{ fontSize: '0.85rem', color: '#ef4444', marginBottom: '0.5rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239, 68, 68, 0.3)' }}>{bunkerError}</div>
+                            )}
+                            <button className="btn btn-primary btn-large" type="submit" disabled={bunkerConnecting} style={{ width: '100%' }}>
+                              {bunkerConnecting ? 'Connecting NIP-46 Bunker...' : 'Connect Remote Signer (NIP-46)'}
+                            </button>
+                          </form>
+                        </div>
+                      )}
+                    </div>
+                  ) : activeAuthTab === 'extension' ? (
+                    <div style={{ textAlign: 'center', width: '100%' }}>
+                      {hasNostrExtension ? (
+                        <>
+                          <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                            NIP-07 browser extension detected (Alby, nos2x).
+                          </p>
+                          <button className="btn btn-primary btn-large" onClick={handleConnectExtension} style={{ width: '100%' }}>
+                            Connect Extension
                           </button>
-                        </form>
-                      </div>
-                    )}
-                  </div>
-                ) : activeAuthTab === 'extension' ? (
-                  <div style={{ textAlign: 'center', width: '100%' }}>
-                    {hasNostrExtension ? (
-                      <>
-                        <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                          NIP-07 browser extension detected (Alby, nos2x).
-                        </p>
-                        <button className="btn btn-primary btn-large" onClick={handleConnectExtension} style={{ width: '100%' }}>
-                          Connect Extension
+                        </>
+                      ) : (
+                        <>
+                          <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                            No browser extension detected. Install <a href="https://getalby.com" target="_blank" rel="noreferrer">Alby</a> or <a href="https://github.com/fiatjaf/nos2x" target="_blank" rel="noreferrer">nos2x</a>, or use <strong>Remote Signer (NIP-46)</strong> tab for mobile!
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ textAlign: 'left', width: '100%' }}>
+                      <form onSubmit={(e) => { e.preventDefault(); handleConnectReadOnly(readOnlyInputKey); }}>
+                        <input
+                          type="text"
+                          className="input-field"
+                          placeholder="npub1... or hex public key"
+                          value={readOnlyInputKey}
+                          onChange={(e) => setReadOnlyInputKey(e.target.value)}
+                          style={{ marginBottom: '0.5rem' }}
+                          required
+                        />
+                        <button className="btn btn-large" type="submit" style={{ width: '100%' }}>
+                          Connect Read-Only Mode
                         </button>
-                      </>
-                    ) : (
-                      <>
-                        <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                          No browser extension detected. Install <a href="https://getalby.com" target="_blank" rel="noreferrer">Alby</a> or <a href="https://github.com/fiatjaf/nos2x" target="_blank" rel="noreferrer">nos2x</a>, or use <strong>Remote Signer (NIP-46)</strong> tab for mobile!
-                        </p>
-                      </>
-                    )}
-                  </div>
-                ) : (
-                  <div style={{ textAlign: 'left', width: '100%' }}>
-                    <form onSubmit={(e) => { e.preventDefault(); handleConnectReadOnly(readOnlyInputKey); }}>
-                      <input
-                        type="text"
-                        className="input-field"
-                        placeholder="npub1... or hex public key"
-                        value={readOnlyInputKey}
-                        onChange={(e) => setReadOnlyInputKey(e.target.value)}
-                        style={{ marginBottom: '0.5rem' }}
-                        required
-                      />
-                      <button className="btn btn-large" type="submit" style={{ width: '100%' }}>
-                        Connect Read-Only Mode
-                      </button>
-                    </form>
-                  </div>
-                )}
+                      </form>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        )}
-      </div>
-    ) : !selectedListId ? (
+          )}
+        </div>
+      ) : !selectedListId ? (
         /* VIEW 2: DASHBOARD HUB (Authenticated) */
         <div className="hub-layout">
           {/* Top User Profile Header */}
@@ -2694,8 +2714,11 @@ function App() {
                       {currentList.type === 'watched' && (item.userRating !== undefined || item.watchedDate) && (
                         <div className="user-log-details" style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                           {item.userRating !== undefined && (
-                            <div style={{ fontSize: '1.3rem', lineHeight: '1' }} title={`Rated ${item.userRating}/10`}>
-                              {['🤮', '🤢', '🤨', '😐', '🙂', '😊', '😀', '😍', '🤩', '🤯'][Math.min(Math.max(Math.round(item.userRating) - 1, 0), 9)]}
+                            <div
+                              style={{ fontSize: '1.3rem', lineHeight: '1', cursor: 'default' }}
+                              title={`Rated ${item.userRating}/10`}
+                            >
+                              {getRatingEmoji(item.userRating)}
                             </div>
                           )}
                           {item.watchedDate && (
@@ -2703,8 +2726,8 @@ function App() {
                               Watched {item.watchedDate.split('-').length === 3
                                 ? `${getMonthName(item.watchedDate.split('-')[1])} ${parseInt(item.watchedDate.split('-')[2], 10)}, ${item.watchedDate.split('-')[0]}`
                                 : item.watchedDate.split('-').length === 2
-                                ? `${getMonthName(item.watchedDate.split('-')[1])} ${item.watchedDate.split('-')[0]}`
-                                : item.watchedDate
+                                  ? `${getMonthName(item.watchedDate.split('-')[1])} ${item.watchedDate.split('-')[0]}`
+                                  : item.watchedDate
                               }
                             </span>
                           )}
@@ -2958,42 +2981,74 @@ function App() {
             <div className="modal-field">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <label className="modal-label">Your Rating</label>
-                {logModal.rating && (
-                  <span style={{ fontSize: '0.8rem', fontWeight: 650, color: 'var(--accent-color)' }}>
-                    {logModal.rating}/10 - {
-                      ['🤮 Vomiting', '🤢 Nauseous', '🤨 Skeptical', '😐 Neutral', '🙂 Slight Smile', '😊 Warm Smile', '😀 Grinning', '😍 Heart Eyes', '🤩 Star-struck', '🤯 Mind Blown'][parseInt(logModal.rating, 10) - 1]
-                    }
+                {logModal.rating !== '' && (
+                  <span className="desktop-rating-score" style={{ fontSize: '0.82rem', fontWeight: 650, color: 'var(--accent-color)' }}>
+                    {logModal.rating}/10 {RATING_EMOJIS[parseFloat(logModal.rating)]?.label ? `- ${RATING_EMOJIS[parseFloat(logModal.rating)]?.label}` : ''}
                   </span>
                 )}
               </div>
-              <div className="emoji-rating-picker" style={{ display: 'flex', justifyContent: 'space-between', gap: '4px', margin: '4px 0', padding: '8px', backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
-                {['🤮', '🤢', '🤨', '😐', '🙂', '😊', '😀', '😍', '🤩', '🤯'].map((emoji, index) => {
-                  const value = (index + 1).toString();
+
+              {/* Desktop Rating View: 1-10 Emoji Buttons */}
+              <div className="rating-picker-desktop">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((val) => {
+                  const value = val.toString();
                   const isActive = logModal.rating === value;
-                  const isOptional = ['2', '4', '6', '7', '9'].includes(value);
+                  const emojiObj = RATING_EMOJIS[val] || { emoji: '⭐', label: '' };
                   return (
                     <button
                       key={value}
                       type="button"
-                      className={`emoji-picker-btn ${isActive ? 'active' : ''} ${isOptional ? 'optional-rating' : ''}`}
+                      className={`emoji-picker-btn ${isActive ? 'active' : ''}`}
                       onClick={() => setLogModal(prev => ({ ...prev, rating: prev.rating === value ? '' : value }))}
-                      title={`${index + 1}/10`}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        fontSize: '1.6rem',
-                        cursor: 'pointer',
-                        padding: '4px',
-                        borderRadius: 'var(--radius-sm)',
-                        transition: 'transform var(--transition-fast), opacity var(--transition-fast)',
-                        opacity: logModal.rating ? (isActive ? '1' : '0.35') : '0.8',
-                        transform: isActive ? 'scale(1.25)' : 'scale(1)'
-                      }}
+                      title={`${val}/10 - ${emojiObj.label}`}
                     >
-                      {emoji}
+                      {emojiObj.emoji}
                     </button>
                   );
                 })}
+              </div>
+
+              {/* Mobile Rating View: Gradient Gauge with Dynamic Smiley Only */}
+              <div className="rating-picker-mobile rating-gauge-card">
+                <div className="rating-gauge-display">
+                  {logModal.rating !== '' ? (
+                    <div key={logModal.rating} className="rating-gauge-emoji">
+                      {getRatingEmoji(parseFloat(logModal.rating))}
+                    </div>
+                  ) : (
+                    <div className="rating-gauge-emoji" style={{ opacity: 0.35 }}>
+                      ⚪
+                    </div>
+                  )}
+                </div>
+
+                <div className="rating-gauge-slider-container">
+                  <input
+                    type="range"
+                    min="1"
+                    max="10"
+                    step="1"
+                    value={logModal.rating || '8'}
+                    onChange={(e) => setLogModal(prev => ({ ...prev, rating: e.target.value }))}
+                    className="rating-gauge-slider gradient-slider"
+                  />
+                  <div className="rating-gauge-ticks">
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(val => {
+                      const valStr = val.toString();
+                      const isActive = logModal.rating === valStr;
+                      return (
+                        <button
+                          key={val}
+                          type="button"
+                          className={`rating-gauge-tick ${isActive ? 'active' : ''}`}
+                          onClick={() => setLogModal(prev => ({ ...prev, rating: valStr }))}
+                        >
+                          {val}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -3918,7 +3973,7 @@ function App() {
       {isOnboardingOpen && (
         <div className="modal-overlay" onClick={() => { if (onboardingStep !== 4) setIsOnboardingOpen(false); }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '520px' }}>
-            
+
             {/* Modal Header & Progress Indicator */}
             <div className="modal-header" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -3940,7 +3995,7 @@ function App() {
             </div>
 
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', padding: '0.5rem 0' }}>
-              
+
               {/* STEP 1: DEVICE SELECTION (DESKTOP / IOS NOTICE) */}
               {onboardingStep === 1 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -4232,7 +4287,7 @@ function App() {
                     await handlePublishProfile(e);
                     setIsOnboardingOpen(false);
                   }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    
+
                     {/* Crop & Dropzone */}
                     <div
                       onDragOver={(e) => { e.preventDefault(); setIsDraggingAvatar(true); }}
