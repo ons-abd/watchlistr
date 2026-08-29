@@ -781,14 +781,186 @@ textarea.input-field {
   margin-top: 0.5rem;
 }
 
-/* Emoji Rating Picker Hover/Active States */
+/* Desktop Rating View: 0-10 Emoji Buttons */
+.rating-picker-desktop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  margin: 4px 0;
+  padding: 10px 12px;
+  background-color: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  min-height: 58px;
+}
+
+.emoji-picker-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  font-size: 1.85rem;
+  cursor: pointer;
+  padding: 4px 2px;
+  border-radius: var(--radius-sm);
+  transition: transform var(--transition-fast), opacity var(--transition-fast);
+  opacity: 0.55;
+  flex: 1;
+  min-width: 0;
+}
+
+.emoji-picker-btn.active {
+  opacity: 1 !important;
+  transform: scale(1.3);
+}
+
 .emoji-picker-btn:hover {
-  transform: scale(1.2) !important;
-  opacity: 0.95 !important;
+  transform: scale(1.22) !important;
+  opacity: 1 !important;
 }
 
 .emoji-picker-btn:active {
-  transform: scale(0.95) !important;
+  transform: scale(1.05) !important;
+}
+
+/* Mobile Rating View: Hidden on Desktop */
+.rating-picker-mobile {
+  display: none;
+}
+
+/* Mobile Rainbow Rating Gauge */
+.rating-gauge-card {
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 0.9rem;
+  margin: 0.35rem 0;
+}
+
+.rating-gauge-display {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+}
+
+.rating-gauge-emoji {
+  font-size: 2.1rem;
+  line-height: 1;
+  user-select: none;
+  animation: ratingPopIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.12));
+}
+
+@keyframes ratingPopIn {
+  0% {
+    transform: scale(0.65);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.rating-gauge-slider-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  width: 100%;
+}
+
+.rating-gauge-slider.gradient-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  border-radius: var(--radius-full);
+  outline: none;
+  cursor: pointer;
+  background: linear-gradient(
+    to right,
+    #000000 0%,
+    #4a0404 25%,
+    #991b1b 60%,
+    var(--accent-color) 100%
+  );
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+.rating-gauge-slider.gradient-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 3px solid #000000;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition: transform var(--transition-fast);
+}
+
+.rating-gauge-slider.gradient-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.18);
+}
+
+.rating-gauge-slider.gradient-slider::-webkit-slider-thumb:active {
+  transform: scale(1.08);
+  background: #f0f0f0;
+}
+
+.rating-gauge-slider.gradient-slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 3px solid #000000;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition: transform var(--transition-fast);
+}
+
+.rating-gauge-slider.gradient-slider::-moz-range-thumb:hover {
+  transform: scale(1.18);
+}
+
+.rating-gauge-ticks {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 1px;
+}
+
+.rating-gauge-tick {
+  background: none;
+  border: none;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 3px 2px;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-fast), transform var(--transition-fast);
+  min-width: 18px;
+  text-align: center;
+}
+
+.rating-gauge-tick:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-tertiary);
+}
+
+.rating-gauge-tick.active {
+  color: var(--text-primary);
+  font-weight: 900;
+  transform: scale(1.25);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
 .media-creator-director {
@@ -1349,8 +1521,13 @@ textarea.input-field {
     gap: 0.75rem;
   }
 
-  .emoji-picker-btn.optional-rating {
+  .desktop-rating-score,
+  .rating-picker-desktop {
     display: none;
+  }
+
+  .rating-picker-mobile {
+    display: flex;
   }
 }
 
