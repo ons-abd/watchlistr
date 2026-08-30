@@ -1534,6 +1534,7 @@ textarea.input-field {
 /* Hub Social & Following Tabs */
 .hub-tabs {
   display: flex;
+  justify-content: center;
   gap: 0.5rem;
   border-bottom: 1px solid var(--border-color);
   margin-bottom: 1.5rem;

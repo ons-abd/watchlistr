@@ -19,13 +19,13 @@ import {
   UserX,
   Globe,
   Smartphone,
-  Key,
   Copy,
   Settings,
   LogOut,
   Upload,
   Sparkles,
-  Download
+  Download,
+  LogIn
 } from 'lucide-react';
 import {
   NostrService,
@@ -208,31 +208,19 @@ function App() {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [relayStatuses, setRelayStatuses] = useState<Record<string, boolean>>({});
   const nostrServiceRef = useRef<NostrService | null>(null);
-
-  // Auth Card Multi-Tab state
-  const [activeAuthTab, setActiveAuthTab] = useState<'bunker' | 'extension' | 'readonly'>('bunker');
-  const [bunkerSubMode, setBunkerSubMode] = useState<'nostrconnect' | 'manual'>('nostrconnect');
-  const [bunkerInputUrl, setBunkerInputUrl] = useState('');
-  const [bunkerConnecting, setBunkerConnecting] = useState(false);
-  const [bunkerError, setBunkerError] = useState<string | null>(null);
-  const [authChallengeUrl, setAuthChallengeUrl] = useState<string | null>(null);
-  const [readOnlyInputKey, setReadOnlyInputKey] = useState('');
-  const [nostrConnectUri, setNostrConnectUri] = useState<string | null>(null);
-  const [isNostrConnectListening, setIsNostrConnectListening] = useState<boolean>(false);
-  const [copiedLink, setCopiedLink] = useState<boolean>(false);
-
-  const DEFAULT_RELAYS = [
+  // Connection state
+  const [DEFAULT_RELAYS] = useState<string[]>([
     'wss://relay.damus.io',
     'wss://nos.lol',
     'wss://relay.nostr.band',
     'wss://relay.snort.social'
-  ];
+  ]);
 
   const activeWatched = lists.find(x => x.id === activeWatchedId) || { items: [] };
   const watchedList = activeWatched.items;
 
   // Social & Follows & Explore state
-  const [activeHubTab, setActiveHubTab] = useState<'my-lists' | 'explore' | 'following'>('my-lists');
+  const [activeHubTab, setActiveHubTab] = useState<'my-lists' | 'explore' | 'following'>('explore');
   const [followedPubkeys, setFollowedPubkeys] = useState<string[]>(() => {
     const saved = localStorage.getItem('watchlistr_followed_pubkeys');
     return saved ? JSON.parse(saved) : [];
@@ -262,13 +250,23 @@ function App() {
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
-  // Unauthenticated page state ('landing' or 'login')
-  const [unauthPage, setUnauthPage] = useState<'landing' | 'login'>('landing');
-
-  // Guided Onboarding Wizard state
+  // Guided Onboarding & Direct Login Wizard state
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
-  const [onboardingStep, setOnboardingStep] = useState(1);
+  const [onboardingStep, setOnboardingStep] = useState(0); // 0 = Entry choices & Direct Auth; 1..4 = Guided Setup
+  const onboardingStepRef = useRef(onboardingStep);
+  useEffect(() => {
+    onboardingStepRef.current = onboardingStep;
+  }, [onboardingStep]);
   const [onboardingDesktopDevice, setOnboardingDesktopDevice] = useState<'android' | 'ios' | null>(null);
+  const [directAuthTab, setDirectAuthTab] = useState<'bunker' | 'extension' | 'readonly'>('bunker');
+  const [bunkerConnectMode, setBunkerConnectMode] = useState<'qr' | 'manual'>('qr');
+  const [bunkerInputUrl, setBunkerInputUrl] = useState('');
+  const [bunkerConnecting, setBunkerConnecting] = useState(false);
+  const [bunkerError, setBunkerError] = useState<string | null>(null);
+  const [authChallengeUrl, setAuthChallengeUrl] = useState<string | null>(null);
+  const [readOnlyInputKey, setReadOnlyInputKey] = useState('');
+  const [nostrConnectUri, setNostrConnectUri] = useState<string | null>(null);
+  const [isNostrConnectListening, setIsNostrConnectListening] = useState<boolean>(false);
 
   // Profile Edit state & Deferred Upload with Interactive Crop & Zoom
   const [profileEditName, setProfileEditName] = useState('');
@@ -493,8 +491,7 @@ function App() {
     return () => clearTimeout(delayDebounce);
   }, [searchQuery]);
 
-  // Nostr auth functions
-  const handleConnectExtension = async () => {
+  const handleDirectExtensionLogin = async () => {
     if (!window.nostr) {
       alert("No NIP-07 extension detected. Please install Alby or nos2x, or use Remote Signer.");
       return;
@@ -508,6 +505,7 @@ function App() {
         const user: NostrUser = { pubkey, readOnly: false, signerType: 'extension' };
         setNostrUser(user);
         localStorage.setItem('watchlistr_nostr_user', JSON.stringify(user));
+        setIsOnboardingOpen(false);
       }
     } catch (err) {
       console.error("Failed to connect Nostr extension:", err);
@@ -515,14 +513,14 @@ function App() {
     }
   };
 
-  const handleConnectBunker = async (bunkerUrl: string) => {
-    if (!bunkerUrl.trim()) return;
+  const handleDirectBunkerManualLogin = async (url: string) => {
+    if (!url.trim()) return;
     setBunkerConnecting(true);
     setBunkerError(null);
     setAuthChallengeUrl(null);
 
     try {
-      const signer = await createBunkerSigner(bunkerUrl, undefined, (authUrl) => {
+      const signer = await createBunkerSigner(url, undefined, (authUrl) => {
         setAuthChallengeUrl(authUrl);
       });
       activeSignerRef.current = signer;
@@ -532,19 +530,35 @@ function App() {
         pubkey,
         readOnly: false,
         signerType: 'bunker',
-        bunkerUrl: bunkerUrl.trim(),
+        bunkerUrl: url.trim(),
         bunkerClientSk: signer.clientSecretKeyHex
       };
 
       setNostrUser(user);
       localStorage.setItem('watchlistr_nostr_user', JSON.stringify(user));
       setBunkerInputUrl('');
+      setIsOnboardingOpen(false);
     } catch (err: any) {
       console.error("Failed to connect NIP-46 Bunker:", err);
       setBunkerError(err.message || String(err));
     } finally {
       setBunkerConnecting(false);
     }
+  };
+
+  const handleDirectReadOnlyLogin = (rawKey: string) => {
+    const hex = decodeNpubToHex(rawKey);
+    if (!hex || hex.length !== 64) {
+      alert("Invalid Nostr public key or npub format.");
+      return;
+    }
+    const signer = new ReadOnlySigner(hex);
+    activeSignerRef.current = signer;
+    const user: NostrUser = { pubkey: hex, readOnly: true, signerType: 'readonly' };
+    setNostrUser(user);
+    localStorage.setItem('watchlistr_nostr_user', JSON.stringify(user));
+    setReadOnlyInputKey('');
+    setIsOnboardingOpen(false);
   };
 
   const handleStartNostrConnect = async () => {
@@ -574,26 +588,17 @@ function App() {
       setNostrUser(user);
       localStorage.setItem('watchlistr_nostr_user', JSON.stringify(user));
       setNostrConnectUri(null);
+      if (onboardingStepRef.current === 0) {
+        setIsOnboardingOpen(false);
+      } else {
+        setOnboardingStep(4);
+      }
     } catch (err: any) {
       console.error("Nostr Connect session failed:", err);
       setBunkerError(err.message || String(err));
     } finally {
       setIsNostrConnectListening(false);
     }
-  };
-
-  const handleConnectReadOnly = (rawKey: string) => {
-    const hex = decodeNpubToHex(rawKey);
-    if (!hex || hex.length !== 64) {
-      alert("Invalid Nostr public key or npub format.");
-      return;
-    }
-    const signer = new ReadOnlySigner(hex);
-    activeSignerRef.current = signer;
-    const user: NostrUser = { pubkey: hex, readOnly: true, signerType: 'readonly' };
-    setNostrUser(user);
-    localStorage.setItem('watchlistr_nostr_user', JSON.stringify(user));
-    setReadOnlyInputKey('');
   };
 
   const logoutNostr = () => {
@@ -1067,6 +1072,12 @@ function App() {
       observer.disconnect();
     };
   }, [activeHubTab, hasMoreExplore, isExploreLoading, isExploreLoadingMore, exploreUntil]);
+
+  useEffect(() => {
+    if (activeHubTab === 'explore' && exploreLists.length === 0 && !isExploreLoading) {
+      loadExploreData(true);
+    }
+  }, [activeHubTab]);
 
   useEffect(() => {
     if (followedPubkeys.length > 0 && nostrServiceRef.current) {
@@ -1924,336 +1935,11 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* VIEW 1: LANDING PAGE VS LEGACY LOGIN PAGE */}
-      {!nostrUser ? (
+      {!selectedListId ? (
+        /* DASHBOARD HUB (Accessible to all: Guests & Authenticated Users) */
         <div className="hub-layout">
-          {unauthPage === 'landing' ? (
-            /* PAGE 1: THE LANDING PAGE (WELCOME INTRO ONLY) */
-            <div className="hub-hero">
-              <h1 className="landing-logo" id="main-title" style={{ fontSize: '3.2rem', marginBottom: '0.2rem' }}>Watchlistr</h1>
-              <p className="landing-tagline" style={{ margin: 0, fontSize: '1.1rem' }}>
-                <a href="#" style={{ color: 'inherit', textDecoration: 'none' }}>Powered</a> by{' '}
-                <a
-                  href="https://github.com/nostr-protocol/nostr"
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ color: 'var(--accent-color)', textDecoration: 'underline' }}
-                >
-                  Nostr
-                </a>
-              </p>
-
-              {/* Landing Intro Card */}
-              <div style={{
-                width: '100%',
-                maxWidth: '540px',
-                margin: '1.75rem auto 0 auto',
-                padding: '1.75rem',
-                backgroundColor: 'var(--bg-secondary)',
-                border: '1px solid var(--border-color)',
-                borderRadius: 'var(--radius-lg)',
-                boxShadow: 'var(--shadow-xl)',
-                textAlign: 'center',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '1.25rem'
-              }}>
-                <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                  Your Movies & TV Shows, Completely Yours 🍿
-                </div>
-
-                <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-secondary)', lineHeight: 1.55, maxWidth: '460px' }}>
-                  Watchlistr is built on <strong>Nostr</strong> — an open protocol designed around true digital property rights. That means your watchlists, ratings, and profile belong <strong>100% to you</strong>, not to a central server or to us! You sign in independently with your own key manager.
-                </p>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', width: '100%', alignItems: 'center', marginTop: '0.5rem' }}>
-                  <button
-                    className="btn btn-primary"
-                    type="button"
-                    onClick={() => {
-                      const dev = detectDeviceType();
-                      setOnboardingDesktopDevice(null);
-                      setIsOnboardingOpen(true);
-                      if (dev === 'android' || dev === 'ios') {
-                        setOnboardingStep(2);
-                      } else {
-                        setOnboardingStep(1);
-                      }
-                    }}
-                    style={{
-                      padding: '0.85rem 1.75rem',
-                      fontSize: '1.05rem',
-                      fontWeight: 700,
-                      width: '100%',
-                      maxWidth: '360px',
-                      justifyContent: 'center',
-                      boxShadow: '0 4px 14px rgba(99, 102, 241, 0.35)'
-                    }}
-                  >
-                    <Sparkles size={18} /> New to Nostr? Guided Setup
-                  </button>
-
-                  <button
-                    className="btn"
-                    type="button"
-                    onClick={() => setUnauthPage('login')}
-                    style={{
-                      padding: '0.65rem 1.25rem',
-                      fontSize: '0.9rem',
-                      color: 'var(--text-secondary)',
-                      textDecoration: 'underline',
-                      border: 'none',
-                      backgroundColor: 'transparent',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    I know what I'm doing, show me the login options
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            /* PAGE 2: LEGACY DIRECT LOGIN PAGE (AUTH TABS ONLY) */
-            <div className="hub-hero">
-              <div style={{ width: '100%', maxWidth: '540px', margin: '0 auto 1rem auto', display: 'flex', justifyContent: 'flex-start' }}>
-                <button
-                  className="btn btn-small"
-                  onClick={() => setUnauthPage('landing')}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                >
-                  <ArrowLeft size={16} /> Back to Welcome Page
-                </button>
-              </div>
-
-              <h1 className="landing-logo" style={{ fontSize: '2.5rem', marginBottom: '0.2rem' }}>Sign In to Watchlistr</h1>
-              <p style={{ margin: '0 0 1.25rem 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                Direct authentication for experienced Nostr users, browser extensions, or iOS devices.
-              </p>
-
-              {/* Multi-Tab Nostr Auth Card */}
-              <div style={{ width: '100%', maxWidth: '540px', margin: '0 auto' }}>
-                <div className="plugin-notice-card" style={{ flexDirection: 'column', gap: '0.75rem', padding: '1.25rem', width: '100%' }}>
-                  <div className="auth-tabs" style={{ width: '100%', justifyContent: 'center' }}>
-                    <button
-                      className={`auth-tab ${activeAuthTab === 'bunker' ? 'active' : ''}`}
-                      onClick={() => setActiveAuthTab('bunker')}
-                    >
-                      <Smartphone size={16} /> Remote Signer (NIP-46)
-                    </button>
-                    <button
-                      className={`auth-tab ${activeAuthTab === 'extension' ? 'active' : ''}`}
-                      onClick={() => setActiveAuthTab('extension')}
-                    >
-                      <Check size={16} /> Extension (NIP-07)
-                    </button>
-                    <button
-                      className={`auth-tab ${activeAuthTab === 'readonly' ? 'active' : ''}`}
-                      onClick={() => setActiveAuthTab('readonly')}
-                    >
-                      <Key size={16} /> Read-Only
-                    </button>
-                  </div>
-
-                  {activeAuthTab === 'bunker' ? (
-                    <div style={{ textAlign: 'left', width: '100%' }}>
-                      <div style={{ display: 'flex', gap: '8px', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
-                        <button
-                          type="button"
-                          className={`btn btn-small ${bunkerSubMode === 'nostrconnect' ? 'btn-primary' : 'btn-secondary'}`}
-                          onClick={() => { setBunkerSubMode('nostrconnect'); setBunkerError(null); }}
-                          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.8rem' }}
-                        >
-                          <Smartphone size={14} /> Nostr Connect (QR / Link)
-                        </button>
-                        <button
-                          type="button"
-                          className={`btn btn-small ${bunkerSubMode === 'manual' ? 'btn-primary' : 'btn-secondary'}`}
-                          onClick={() => { setBunkerSubMode('manual'); setBunkerError(null); }}
-                          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.8rem' }}
-                        >
-                          <Key size={14} /> Bunker URI
-                        </button>
-                      </div>
-
-                      {bunkerSubMode === 'nostrconnect' ? (
-                        <div style={{ textAlign: 'center', padding: '0.25rem 0' }}>
-                          {!nostrConnectUri && !isNostrConnectListening ? (
-                            <div>
-                              <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                                Scan a QR code or tap the deep link using a compatible remote signer.
-                              </p>
-                              <button
-                                className="btn btn-primary btn-large"
-                                type="button"
-                                onClick={handleStartNostrConnect}
-                                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-                              >
-                                <Smartphone size={18} /> Start Nostr Connect Session
-                              </button>
-                            </div>
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-                              <div style={{ backgroundColor: '#ffffff', padding: '10px', borderRadius: 'var(--radius-md)', display: 'inline-block', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
-                                <img
-                                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(nostrConnectUri || '')}`}
-                                  alt="Nostr Connect QR Code"
-                                  width={180}
-                                  height={180}
-                                  style={{ display: 'block' }}
-                                />
-                              </div>
-                              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ width: '8px', height: '8px', backgroundColor: '#3b82f6', borderRadius: '50%', display: 'inline-block', animation: 'pulse 1.5s infinite' }}></span>
-                                Waiting for remote signer authorization...
-                              </div>
-                              <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
-                                <a
-                                  href={nostrConnectUri || '#'}
-                                  className="btn btn-primary btn-small"
-                                  style={{ flex: 1, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', color: '#ffffff' }}
-                                >
-                                  <Smartphone size={14} /> Open Signer App
-                                </a>
-                                <button
-                                  type="button"
-                                  className="btn btn-secondary btn-small"
-                                  onClick={() => {
-                                    if (nostrConnectUri) {
-                                      navigator.clipboard.writeText(nostrConnectUri);
-                                      setCopiedLink(true);
-                                      setTimeout(() => setCopiedLink(false), 2000);
-                                    }
-                                  }}
-                                  style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                >
-                                  <Copy size={14} /> {copiedLink ? 'Copied!' : 'Copy'}
-                                </button>
-                              </div>
-                              <button
-                                type="button"
-                                className="btn btn-secondary btn-small"
-                                onClick={() => {
-                                  setNostrConnectUri(null);
-                                  setIsNostrConnectListening(false);
-                                }}
-                                style={{ fontSize: '0.75rem', opacity: 0.8 }}
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          )}
-
-                          {bunkerError && (
-                            <div style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
-                              {bunkerError}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div>
-                          <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                            Paste a <code>bunker://</code> URI manually from your remote signer:
-                          </p>
-                          <form onSubmit={(e) => { e.preventDefault(); handleConnectBunker(bunkerInputUrl); }}>
-                            <textarea
-                              className="input-field"
-                              placeholder="bunker://<remote-signer-pubkey>?relay=wss://...&secret=..."
-                              rows={4}
-                              value={bunkerInputUrl}
-                              onChange={(e) => setBunkerInputUrl(e.target.value)}
-                              style={{ marginBottom: '0.5rem', fontFamily: 'monospace', fontSize: '0.85rem', resize: 'vertical', width: '100%', wordBreak: 'break-all' }}
-                              required
-                            />
-                            {authChallengeUrl && (
-                              <div style={{ backgroundColor: 'rgba(21, 128, 61, 0.15)', border: '1px solid #15803d', padding: '10px 14px', borderRadius: 'var(--radius-md)', marginBottom: '0.75rem', fontSize: '0.85rem' }}>
-                                <strong>🔑 Action Required in Signer App:</strong>
-                                <p style={{ margin: '4px 0 8px 0' }}>
-                                  Please authorize the connection request in your remote signer application, or tap below:
-                                </p>
-                                <a href={authChallengeUrl} target="_blank" rel="noreferrer" className="btn btn-primary btn-small">
-                                  Open Authorization Link
-                                </a>
-                              </div>
-                            )}
-                            {bunkerError && (
-                              <div style={{ fontSize: '0.85rem', color: '#ef4444', marginBottom: '0.5rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239, 68, 68, 0.3)' }}>{bunkerError}</div>
-                            )}
-                            <button className="btn btn-primary btn-large" type="submit" disabled={bunkerConnecting} style={{ width: '100%' }}>
-                              {bunkerConnecting ? 'Connecting NIP-46 Bunker...' : 'Connect Remote Signer (NIP-46)'}
-                            </button>
-                          </form>
-                        </div>
-                      )}
-                    </div>
-                  ) : activeAuthTab === 'extension' ? (
-                    <div style={{ textAlign: 'center', width: '100%' }}>
-                      {hasNostrExtension ? (
-                        <>
-                          <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                            NIP-07 browser extension detected (Alby, nos2x).
-                          </p>
-                          <button className="btn btn-primary btn-large" onClick={handleConnectExtension} style={{ width: '100%' }}>
-                            Connect Extension
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                            No browser extension detected. Install <a href="https://getalby.com" target="_blank" rel="noreferrer">Alby</a> or <a href="https://github.com/fiatjaf/nos2x" target="_blank" rel="noreferrer">nos2x</a>, or use <strong>Remote Signer (NIP-46)</strong> tab for mobile!
-                          </p>
-                        </>
-                      )}
-                    </div>
-                  ) : (
-                    <div style={{ textAlign: 'left', width: '100%' }}>
-                      <form onSubmit={(e) => { e.preventDefault(); handleConnectReadOnly(readOnlyInputKey); }}>
-                        <input
-                          type="text"
-                          className="input-field"
-                          placeholder="npub1... or hex public key"
-                          value={readOnlyInputKey}
-                          onChange={(e) => setReadOnlyInputKey(e.target.value)}
-                          style={{ marginBottom: '0.5rem' }}
-                          required
-                        />
-                        <button className="btn btn-large" type="submit" style={{ width: '100%' }}>
-                          Connect Read-Only Mode
-                        </button>
-                      </form>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      ) : !selectedListId ? (
-        /* VIEW 2: DASHBOARD HUB (Authenticated) */
-        <div className="hub-layout">
-          {/* Top User Profile Header */}
+          {/* Top User Profile / Log In Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--bg-secondary)', padding: '0.85rem 1.25rem', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)' }}>
-            <div
-              className="nostr-user-info clickable"
-              onClick={() => setIsConnectionModalOpen(true)}
-              style={{ margin: 0, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-              title="Click to view connection info or disconnect"
-            >
-              {isSyncing && <div className="spinner" style={{ width: '14px', height: '14px', border: '2px solid var(--bg-tertiary)', borderTop: '2px solid var(--accent-color)', marginRight: '6px' }}></div>}
-              {nostrUser.picture && (
-                <img
-                  src={nostrUser.picture}
-                  alt="Avatar"
-                  style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border-color)', marginRight: '6px' }}
-                />
-              )}
-              <span className="nostr-pubkey" style={{ fontWeight: 700, fontSize: '1.05rem' }} title={nostrUser.pubkey}>
-                {nostrUser.name || `${nostrUser.pubkey.substring(0, 8)}...${nostrUser.pubkey.substring(nostrUser.pubkey.length - 4)}`}
-              </span>
-              {nostrUser.signerType === 'bunker' && <span className="bunker-badge">NIP-46 Bunker</span>}
-              {nostrUser.readOnly && <span className="read-only-badge">Read-Only</span>}
-            </div>
-
             <button
               className="btn btn-responsive"
               onClick={() => setIsSettingsModalOpen(true)}
@@ -2261,16 +1947,55 @@ function App() {
             >
               <Settings size={18} /> <span className="btn-label">Settings</span>
             </button>
+
+            {nostrUser ? (
+              <div
+                className="nostr-user-info clickable"
+                onClick={() => setIsConnectionModalOpen(true)}
+                style={{ margin: 0, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                title="Click to view connection info or disconnect"
+              >
+                {isSyncing && <div className="spinner" style={{ width: '14px', height: '14px', border: '2px solid var(--bg-tertiary)', borderTop: '2px solid var(--accent-color)', marginRight: '6px' }}></div>}
+                {nostrUser.picture && (
+                  <img
+                    src={nostrUser.picture}
+                    alt="Avatar"
+                    style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border-color)', marginRight: '6px' }}
+                  />
+                )}
+                <span className="nostr-pubkey" style={{ fontWeight: 700, fontSize: '1.05rem' }} title={nostrUser.pubkey}>
+                  {nostrUser.name || `${nostrUser.pubkey.substring(0, 8)}...${nostrUser.pubkey.substring(nostrUser.pubkey.length - 4)}`}
+                </span>
+              </div>
+            ) : (
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  setOnboardingStep(0);
+                  setIsOnboardingOpen(true);
+                }}
+                style={{ fontWeight: 700, padding: '0.45rem 1.1rem', fontSize: '0.95rem' }}
+              >
+                <LogIn size={16} /> Log in
+              </button>
+            )}
           </div>
 
           {/* Hub Navigation Tabs */}
           <div className="hub-tabs">
             <button
               className={`hub-tab ${activeHubTab === 'my-lists' ? 'active' : ''}`}
-              onClick={() => setActiveHubTab('my-lists')}
+              onClick={() => {
+                if (!nostrUser) {
+                  setOnboardingStep(0);
+                  setIsOnboardingOpen(true);
+                } else {
+                  setActiveHubTab('my-lists');
+                }
+              }}
               title="My Lists"
             >
-              <User size={16} /> <span className="tab-label">My Lists ({lists.length})</span>
+              <User size={16} /> <span className="tab-label">My Lists {nostrUser ? `(${lists.length})` : ''}</span>
             </button>
             <button
               className={`hub-tab ${activeHubTab === 'explore' ? 'active' : ''}`}
@@ -2286,10 +2011,17 @@ function App() {
             </button>
             <button
               className={`hub-tab ${activeHubTab === 'following' ? 'active' : ''}`}
-              onClick={() => setActiveHubTab('following')}
+              onClick={() => {
+                if (!nostrUser) {
+                  setOnboardingStep(0);
+                  setIsOnboardingOpen(true);
+                } else {
+                  setActiveHubTab('following');
+                }
+              }}
               title="Following"
             >
-              <Users size={16} /> <span className="tab-label">Following ({followedPubkeys.length})</span>
+              <Users size={16} /> <span className="tab-label">Following {nostrUser ? `(${followedPubkeys.length})` : ''}</span>
             </button>
           </div>
 
@@ -3857,24 +3589,36 @@ function App() {
                 )}
               </form>
 
-              {/* Public Key Details */}
-              <div style={{ backgroundColor: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '0.25rem' }}>Public Key (npub)</div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                  <code style={{ fontSize: '0.8rem', wordBreak: 'break-all', userSelect: 'all' }}>
-                    {nostrUser?.pubkey ? `${nostrUser.pubkey.substring(0, 16)}...${nostrUser.pubkey.substring(nostrUser.pubkey.length - 8)}` : ''}
-                  </code>
-                  <button
-                    className="btn btn-small"
-                    onClick={() => {
-                      if (nostrUser?.pubkey) {
-                        navigator.clipboard.writeText(nostrUser.pubkey);
-                      }
-                    }}
-                    title="Copy Public Key"
-                  >
-                    <Copy size={14} />
-                  </button>
+              {/* Connection Type & Public Key Details */}
+              <div style={{ backgroundColor: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Connection Type</span>
+                  <div>
+                    {nostrUser?.signerType === 'bunker' && <span className="bunker-badge" style={{ margin: 0 }}>NIP-46 Remote Signer</span>}
+                    {nostrUser?.signerType === 'extension' && <span className="bunker-badge" style={{ backgroundColor: 'var(--accent-color)', color: '#fff', margin: 0 }}>Extension (NIP-07)</span>}
+                    {nostrUser?.readOnly && <span className="read-only-badge" style={{ margin: 0 }}>Read-Only Mode</span>}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '0.25rem' }}>Public Key (npub)</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                    <code style={{ fontSize: '0.8rem', wordBreak: 'break-all', userSelect: 'all' }}>
+                      {nostrUser?.pubkey ? `${nostrUser.pubkey.substring(0, 16)}...${nostrUser.pubkey.substring(nostrUser.pubkey.length - 8)}` : ''}
+                    </code>
+                    <button
+                      className="btn btn-small"
+                      type="button"
+                      onClick={() => {
+                        if (nostrUser?.pubkey) {
+                          navigator.clipboard.writeText(nostrUser.pubkey);
+                        }
+                      }}
+                      title="Copy Public Key"
+                    >
+                      <Copy size={14} />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -3969,7 +3713,7 @@ function App() {
           </div>
         </div>
       )}
-      {/* GUIDED ONBOARDING WIZARD MODAL */}
+      {/* GUIDED ONBOARDING & DIRECT LOGIN MODAL */}
       {isOnboardingOpen && (
         <div className="modal-overlay" onClick={() => { if (onboardingStep !== 4) setIsOnboardingOpen(false); }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '520px' }}>
@@ -3979,22 +3723,275 @@ function App() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Sparkles size={20} style={{ color: 'var(--accent-color)' }} />
                 <h3 className="modal-title" style={{ margin: 0, fontSize: '1.2rem' }}>
-                  Nostr Setup Guide
+                  {onboardingStep === 0 ? 'Sign In to Watchlistr' : 'Nostr Setup Guide'}
                 </h3>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-color)', backgroundColor: 'var(--accent-color-light)', padding: '2px 8px', borderRadius: 'var(--radius-sm)' }}>
-                  Step {onboardingStep} of 4
-                </span>
+                {onboardingStep === 0 ? (
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', backgroundColor: 'var(--bg-tertiary)', padding: '2px 8px', borderRadius: 'var(--radius-sm)' }}>
+                    Sign-In Options
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-color)', backgroundColor: 'var(--accent-color-light)', padding: '2px 8px', borderRadius: 'var(--radius-sm)' }}>
+                    Step {onboardingStep} of 4
+                  </span>
+                )}
               </div>
               <button
                 className="btn btn-action-icon"
                 onClick={() => setIsOnboardingOpen(false)}
-                title="Exit Onboarding"
+                title="Close"
               >
                 <X size={18} />
               </button>
             </div>
 
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', padding: '0.5rem 0' }}>
+
+              {/* STEP 0: WELCOME & INITIAL METHOD SELECTION */}
+              {onboardingStep === 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+
+                  {/* Choice A: New to Nostr Guided Setup */}
+                  <div style={{
+                    backgroundColor: 'var(--bg-secondary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '1.25rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.85rem'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Sparkles size={20} style={{ color: 'var(--accent-color)' }} />
+                      <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>New to Nostr? Guided Setup</h4>
+                    </div>
+                    <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                      Watchlistr is built on Nostr — an open protocol where you own 100% of your watchlists. We'll guide you step-by-step to set up your mobile signer app.
+                    </p>
+                    <button
+                      className="btn btn-primary"
+                      style={{ width: '100%', justifyContent: 'center', padding: '0.65rem 1rem', fontWeight: 700, marginTop: '0.25rem' }}
+                      onClick={() => {
+                        const dev = detectDeviceType();
+                        setOnboardingDesktopDevice(null);
+                        if (dev === 'android' || dev === 'ios') {
+                          setOnboardingStep(2);
+                        } else {
+                          setOnboardingStep(1);
+                        }
+                      }}
+                    >
+                      <Sparkles size={16} /> Start Guided Setup →
+                    </button>
+                  </div>
+
+                  {/* Divider */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--border-color)' }}></div>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      or choose login type
+                    </span>
+                    <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--border-color)' }}></div>
+                  </div>
+
+                  {/* Choice B: Direct Login Options */}
+                  <div style={{
+                    backgroundColor: 'var(--bg-secondary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '1.25rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1rem'
+                  }}>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Existing Nostr User
+                    </div>
+
+                    {/* Login Tabs */}
+                    <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+                      <button
+                        type="button"
+                        className={`btn btn-small ${directAuthTab === 'bunker' ? 'btn-primary' : 'btn-action-icon'}`}
+                        onClick={() => setDirectAuthTab('bunker')}
+                        style={{ flex: 1, justifyContent: 'center', padding: '0.4rem 0.5rem', fontSize: '0.82rem' }}
+                      >
+                        <Smartphone size={14} style={{ marginRight: '4px' }} /> Remote Signer
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn btn-small ${directAuthTab === 'extension' ? 'btn-primary' : 'btn-action-icon'}`}
+                        onClick={() => setDirectAuthTab('extension')}
+                        style={{ flex: 1, justifyContent: 'center', padding: '0.4rem 0.5rem', fontSize: '0.82rem' }}
+                      >
+                        <Check size={14} style={{ marginRight: '4px' }} /> Extension
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn btn-small ${directAuthTab === 'readonly' ? 'btn-primary' : 'btn-action-icon'}`}
+                        onClick={() => setDirectAuthTab('readonly')}
+                        style={{ flex: 1, justifyContent: 'center', padding: '0.4rem 0.5rem', fontSize: '0.82rem' }}
+                      >
+                        <User size={14} style={{ marginRight: '4px' }} /> Read-Only
+                      </button>
+                    </div>
+
+                    {/* Tab 1: Remote Signer (NIP-46) */}
+                    {directAuthTab === 'bunker' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                        <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                          Connect using a remote signer app (Amber, Clave, Nsec.app).
+                        </p>
+
+                        <div style={{ display: 'flex', gap: '8px', backgroundColor: 'var(--bg-tertiary)', padding: '4px', borderRadius: 'var(--radius-md)' }}>
+                          <button
+                            type="button"
+                            className={`btn ${bunkerConnectMode === 'qr' ? 'btn-primary' : 'btn-action-icon'}`}
+                            onClick={() => { setBunkerConnectMode('qr'); handleStartNostrConnect(); }}
+                            style={{ flex: 1, justifyContent: 'center', padding: '0.35rem 0.5rem', fontSize: '0.8rem' }}
+                          >
+                            Pair App / QR
+                          </button>
+                          <button
+                            type="button"
+                            className={`btn ${bunkerConnectMode === 'manual' ? 'btn-primary' : 'btn-action-icon'}`}
+                            onClick={() => setBunkerConnectMode('manual')}
+                            style={{ flex: 1, justifyContent: 'center', padding: '0.35rem 0.5rem', fontSize: '0.8rem' }}
+                          >
+                            Paste Bunker URI
+                          </button>
+                        </div>
+
+                        {bunkerConnectMode === 'qr' ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem', width: '100%', padding: '0.25rem 0' }}>
+                            {nostrConnectUri ? (
+                              <>
+                                <div style={{ backgroundColor: '#ffffff', padding: '10px', borderRadius: 'var(--radius-md)', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+                                  <img
+                                    src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(nostrConnectUri)}`}
+                                    alt="Nostr Connect QR Code"
+                                    width={160}
+                                    height={160}
+                                    style={{ display: 'block' }}
+                                  />
+                                </div>
+
+                                <a
+                                  href={nostrConnectUri}
+                                  className="btn btn-primary"
+                                  style={{ width: '100%', justifyContent: 'center', padding: '0.6rem', color: '#ffffff', textDecoration: 'none', fontWeight: 700 }}
+                                >
+                                  Open in Remote Signer App
+                                </a>
+
+                                {authChallengeUrl && (
+                                  <a
+                                    href={authChallengeUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="btn btn-primary"
+                                    style={{ width: '100%', justifyContent: 'center', padding: '0.6rem', backgroundColor: '#e11d48' }}
+                                  >
+                                    Complete Auth Challenge in Browser
+                                  </a>
+                                )}
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--accent-color)' }}>
+                                  <RefreshCw size={14} className="spin" /> Waiting for remote authorization...
+                                </div>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                onClick={handleStartNostrConnect}
+                                disabled={isNostrConnectListening}
+                                style={{ width: '100%', justifyContent: 'center', padding: '0.65rem', fontWeight: 700 }}
+                              >
+                                {isNostrConnectListening ? 'Generating pairing connection...' : 'Start Nostr Connect Pairing'}
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <form onSubmit={(e) => { e.preventDefault(); handleDirectBunkerManualLogin(bunkerInputUrl); }} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                            <input
+                              type="text"
+                              className="input-field"
+                              placeholder="bunker://... or npub1...#bunker=..."
+                              value={bunkerInputUrl}
+                              onChange={(e) => setBunkerInputUrl(e.target.value)}
+                              required
+                            />
+                            <button
+                              type="submit"
+                              className="btn btn-primary"
+                              disabled={bunkerConnecting}
+                              style={{ width: '100%', justifyContent: 'center', padding: '0.65rem' }}
+                            >
+                              {bunkerConnecting ? 'Connecting...' : 'Connect Bunker'}
+                            </button>
+                          </form>
+                        )}
+
+                        {bunkerError && (
+                          <div style={{ color: '#ef4444', fontSize: '0.82rem', textAlign: 'center', backgroundColor: 'rgba(239,68,68,0.1)', padding: '6px 10px', borderRadius: 'var(--radius-sm)' }}>
+                            {bunkerError}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Tab 2: Extension (NIP-07) */}
+                    {directAuthTab === 'extension' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', textAlign: 'center' }}>
+                        {hasNostrExtension ? (
+                          <>
+                            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                              Detected NIP-07 extension (Alby, nos2x). Click below to sign in.
+                            </p>
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              onClick={handleDirectExtensionLogin}
+                              style={{ width: '100%', justifyContent: 'center', padding: '0.65rem', fontWeight: 700 }}
+                            >
+                              Sign In with Extension (NIP-07)
+                            </button>
+                          </>
+                        ) : (
+                          <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                            No browser extension detected. Install <a href="https://getalby.com" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-color)' }}>Alby</a> or <a href="https://github.com/fiatjaf/nos2x" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-color)' }}>nos2x</a>, or use <strong>Remote Signer</strong> option!
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Tab 3: Read-Only Mode */}
+                    {directAuthTab === 'readonly' && (
+                      <form onSubmit={(e) => { e.preventDefault(); handleDirectReadOnlyLogin(readOnlyInputKey); }} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                          Enter any Nostr public key or npub to view their watchlists:
+                        </p>
+                        <input
+                          type="text"
+                          className="input-field"
+                          placeholder="npub1... or hex public key"
+                          value={readOnlyInputKey}
+                          onChange={(e) => setReadOnlyInputKey(e.target.value)}
+                          required
+                        />
+                        <button
+                          type="submit"
+                          className="btn btn-primary"
+                          style={{ width: '100%', justifyContent: 'center', padding: '0.65rem' }}
+                        >
+                          Connect Read-Only Mode
+                        </button>
+                      </form>
+                    )}
+                  </div>
+
+                </div>
+              )}
 
               {/* STEP 1: DEVICE SELECTION (DESKTOP / IOS NOTICE) */}
               {onboardingStep === 1 && (
@@ -4010,8 +4007,7 @@ function App() {
                         className="btn btn-primary"
                         style={{ width: '100%', justifyContent: 'center', padding: '0.75rem', marginTop: '0.5rem' }}
                         onClick={() => {
-                          setUnauthPage('login');
-                          setIsOnboardingOpen(false);
+                          setOnboardingStep(0);
                         }}
                       >
                         Show Direct Login Options
@@ -4070,93 +4066,47 @@ function App() {
                 </div>
               )}
 
-              {/* STEP 2: INSTALL A SIGNER APP */}
+              {/* STEP 2: DOWNLOAD SIGNER APP INSTRUCTIONS */}
               {onboardingStep === 2 && (() => {
                 const isIOS = detectDeviceType() === 'ios' || onboardingDesktopDevice === 'ios';
                 return (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', textAlign: 'center', alignItems: 'center' }}>
-                    <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>Install a Nostr Signer App</div>
-                    <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.45, maxWidth: '460px' }}>
-                      To use Watchlistr safely, you need a mobile <strong>signer app</strong> on your phone. A signer holds your cryptographic keys securely so you never have to type passwords into websites. {isIOS ? <>On iOS, we recommend <strong>Clave – Nostr Signer</strong>.</> : <>On Android, we recommend <strong>Amber</strong>.</>}
-                    </p>
-
-                    {isIOS ? (
-                      detectDeviceType() === 'ios' ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%', alignItems: 'center' }}>
-                          <a
-                            href="itms-apps://search.itunes.apple.com/WebObjects/MZSearch.woa/wa/search?term=clave+nostr+signer"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              window.location.href = "itms-apps://search.itunes.apple.com/WebObjects/MZSearch.woa/wa/search?term=clave+nostr+signer";
-                            }}
-                            className="btn btn-primary"
-                            style={{ width: '100%', maxWidth: '340px', padding: '0.75rem', justifyContent: 'center', textDecoration: 'none', color: '#ffffff', fontWeight: 700 }}
-                          >
-                            <Download size={18} /> Find Clave on App Store
-                          </a>
-                        </div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'center' }}>
-                          <div style={{ backgroundColor: '#ffffff', padding: '10px', borderRadius: 'var(--radius-md)', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
-                            <img
-                              src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent('https://apps.apple.com/search?term=clave+nostr+signer')}`}
-                              alt="Clave App Store QR Code"
-                              width={160}
-                              height={160}
-                              style={{ display: 'block' }}
-                            />
-                          </div>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                            Scan with your iPhone camera to search Clave on App Store
-                          </span>
-                        </div>
-                      )
-                    ) : (
-                      detectDeviceType() === 'android' ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%', alignItems: 'center' }}>
-                          <a
-                            href="https://github.com/greenart7c3/Amber/releases/latest"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="btn btn-primary"
-                            style={{ width: '100%', maxWidth: '340px', padding: '0.75rem', justifyContent: 'center', textDecoration: 'none', color: '#ffffff', fontWeight: 700 }}
-                          >
-                            <Download size={18} /> Open Amber Releases (GitHub)
-                          </a>
-                        </div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'center' }}>
-                          <div style={{ backgroundColor: '#ffffff', padding: '10px', borderRadius: 'var(--radius-md)', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
-                            <img
-                              src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent('https://github.com/greenart7c3/Amber/releases/latest')}`}
-                              alt="Amber Release QR Code"
-                              width={160}
-                              height={160}
-                              style={{ display: 'block' }}
-                            />
-                          </div>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                            Scan with your Android camera to open Amber Releases
-                          </span>
-                        </div>
-                      )
-                    )}
-
-                    {/* Quick installation guidance box */}
-                    <div style={{
-                      width: '100%',
-                      backgroundColor: 'var(--bg-secondary)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: 'var(--radius-md)',
-                      padding: '0.85rem 1rem',
-                      textAlign: 'left',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.5rem'
-                    }}>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        Next steps to get set up:
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>
+                        {isIOS ? 'Step 1: Install Clave Signer' : 'Step 1: Install Amber Signer'}
                       </div>
+                      <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                        {isIOS ? 'Install Clave from the App Store to manage your Nostr keys on iOS.' : 'Install Amber from GitHub Releases to manage your Nostr keys on Android.'}
+                      </p>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.75rem', backgroundColor: 'var(--bg-secondary)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', alignItems: 'center' }}>
+                      <Smartphone size={32} style={{ color: 'var(--accent-color)', flexShrink: 0 }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{isIOS ? 'Clave Signer for iOS' : 'Amber Signer for Android'}</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
+                          {isIOS ? 'Remote Signer for iPhone & iPad' : 'v2.1.2 • Open Source Nostr Signer'}
+                        </div>
+                      </div>
+                      <a
+                        href={isIOS ? 'itms-apps://search.itunes.apple.com/WebObjects/MZSearch.woa/wa/search?term=clave+nostr+signer' : 'https://github.com/greenart7c3/Amber/releases/latest'}
+                        onClick={(e) => {
+                          if (isIOS) {
+                            e.preventDefault();
+                            window.location.href = 'itms-apps://search.itunes.apple.com/WebObjects/MZSearch.woa/wa/search?term=clave+nostr+signer';
+                          }
+                        }}
+                        target={isIOS ? '_self' : '_blank'}
+                        rel="noreferrer"
+                        className="btn btn-primary btn-small"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', textDecoration: 'none', color: '#ffffff' }}
+                      >
+                        <Download size={14} /> {isIOS ? 'App Store' : 'Download APK'}
+                      </a>
+                    </div>
+
+                    <div style={{ backgroundColor: 'var(--bg-tertiary)', padding: '0.85rem', borderRadius: 'var(--radius-md)', fontSize: '0.85rem' }}>
+                      <strong style={{ display: 'block', marginBottom: '0.4rem' }}>Quick Steps:</strong>
                       {isIOS ? (
                         <ol style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
                           <li>Install <strong>Clave – Nostr Signer</strong> from the Apple App Store.</li>
@@ -4273,7 +4223,7 @@ function App() {
                 );
               })()}
 
-              {/* STEP 4: BUILT-IN PROFILE SETUP (GLORIOUS STEP!) */}
+              {/* STEP 4: BUILT-IN PROFILE SETUP */}
               {onboardingStep === 4 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <div style={{ textAlign: 'center' }}>
@@ -4359,82 +4309,94 @@ function App() {
                             alt="Crop Preview"
                             draggable={false}
                             style={{
-                              width: '100%',
-                              height: '100%',
-                              objectFit: 'cover',
-                              transform: `translate(${cropOffset.x}px, ${cropOffset.y}px) scale(${cropZoom})`,
-                              transformOrigin: 'center',
-                              pointerEvents: 'none'
+                              position: 'absolute',
+                              left: '50%',
+                              top: '50%',
+                              transform: `translate(-50%, -50%) translate(${cropOffset.x}px, ${cropOffset.y}px) scale(${cropZoom})`,
+                              transformOrigin: 'center center',
+                              maxWidth: 'none',
+                              maxHeight: 'none',
+                              objectFit: 'contain'
                             }}
                           />
                         </div>
-                      ) : profileEditPicture ? (
-                        <img
-                          src={profileEditPicture}
-                          alt="Avatar"
-                          style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--accent-color)' }}
-                        />
                       ) : (
-                        <div className="profile-avatar-fallback" style={{ width: '64px', height: '64px', fontSize: '1.75rem' }}>
-                          {(profileEditName || 'A').substring(0, 1).toUpperCase()}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                          <Upload size={24} style={{ color: 'var(--text-tertiary)' }} />
+                          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Drag & drop avatar photo here</span>
                         </div>
                       )}
 
-                      {selectedImageFile ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center', width: '100%' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', maxWidth: '220px' }}>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Zoom</span>
-                            <input
-                              type="range"
-                              min="1"
-                              max="3"
-                              step="0.05"
-                              value={cropZoom}
-                              onChange={(e) => setCropZoom(parseFloat(e.target.value))}
-                              style={{ flex: 1, accentColor: 'var(--accent-color)' }}
-                            />
-                          </div>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--accent-color)', fontWeight: 600 }}>
-                            Drag photo to center • Use slider to zoom
-                          </span>
-                        </div>
-                      ) : (
-                        <label className="btn btn-small btn-primary" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                          <Upload size={14} /> Choose Photo
+                      <label className="btn btn-secondary btn-small" style={{ cursor: 'pointer' }}>
+                        Browse Computer
+                        <input
+                          type="file"
+                          accept="image/*"
+                          style={{ display: 'none' }}
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              handleFileSelection(e.target.files[0]);
+                            }
+                          }}
+                        />
+                      </label>
+
+                      {selectedImageFile && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', maxWidth: '240px', marginTop: '0.25rem' }}>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Zoom:</span>
                           <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => {
-                              if (e.target.files && e.target.files[0]) {
-                                handleFileSelection(e.target.files[0]);
-                              }
-                            }}
-                            style={{ display: 'none' }}
+                            type="range"
+                            min="1"
+                            max="3"
+                            step="0.05"
+                            value={cropZoom}
+                            onChange={(e) => setCropZoom(parseFloat(e.target.value))}
+                            style={{ flex: 1 }}
                           />
-                        </label>
+                        </div>
                       )}
                     </div>
 
                     {/* Name Input */}
-                    <div className="modal-field">
-                      <label className="modal-label">Display Name</label>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.4rem' }}>Display Name</label>
                       <input
                         type="text"
                         className="input-field"
-                        placeholder="e.g. Satoshi"
+                        placeholder="e.g. MovieBuff99"
                         value={profileEditName}
                         onChange={(e) => setProfileEditName(e.target.value)}
                         required
                       />
                     </div>
 
+                    {/* Avatar URL Fallback Input */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.4rem' }}>Avatar Image URL (Optional)</label>
+                      <input
+                        type="text"
+                        className="input-field"
+                        placeholder="https://example.com/avatar.jpg"
+                        value={selectedImageFile ? 'Local image selected above (Will auto-host on nostr.build)' : profileEditPicture}
+                        disabled={!!selectedImageFile}
+                        onChange={(e) => setProfileEditPicture(e.target.value)}
+                      />
+                    </div>
+
                     {profileStatus && (
-                      <div style={{ fontSize: '0.85rem', color: profileStatus.type === 'success' ? '#15803d' : '#ef4444' }}>
+                      <div style={{
+                        padding: '0.75rem',
+                        borderRadius: 'var(--radius-md)',
+                        fontSize: '0.85rem',
+                        backgroundColor: profileStatus.type === 'success' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                        color: profileStatus.type === 'success' ? '#22c55e' : '#ef4444',
+                        border: profileStatus.type === 'success' ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)'
+                      }}>
                         {profileStatus.message}
                       </div>
                     )}
 
-                    <div style={{ display: 'flex', gap: '10px', marginTop: '0.5rem' }}>
+                    <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
                       <button
                         type="button"
                         className="btn"
@@ -4443,19 +4405,20 @@ function App() {
                       >
                         Skip for Now
                       </button>
+
                       <button
                         type="submit"
                         className="btn btn-primary"
                         disabled={isPublishingProfile}
-                        style={{ flex: 2, justifyContent: 'center', padding: '0.75rem', fontWeight: 700 }}
+                        style={{ flex: 1, justifyContent: 'center', fontWeight: 700 }}
                       >
                         {isPublishingProfile ? (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                            <RefreshCw size={16} className="spin" />
-                            {publishingStep === 'uploading' ? 'Uploading Photo...' : 'Publishing Profile...'}
-                          </span>
+                          <>
+                            <RefreshCw size={16} className="spin" style={{ marginRight: '6px' }} />
+                            {publishingStep === 'uploading' ? 'Uploading Image...' : 'Publishing Profile...'}
+                          </>
                         ) : (
-                          'Save Profile & Start Watching!'
+                          'Save Profile →'
                         )}
                       </button>
                     </div>
@@ -4467,10 +4430,10 @@ function App() {
 
             {/* Wizard Navigation Footer */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem', marginTop: '0.5rem' }}>
-              {onboardingStep > 1 && onboardingStep < 4 ? (
+              {onboardingStep > 0 ? (
                 <button
                   className="btn btn-small"
-                  onClick={() => setOnboardingStep(prev => Math.max(1, prev - 1))}
+                  onClick={() => setOnboardingStep(prev => (prev === 1 ? 0 : prev - 1))}
                 >
                   ← Back
                 </button>
@@ -4480,13 +4443,10 @@ function App() {
 
               <button
                 className="btn btn-small"
-                onClick={() => {
-                  setUnauthPage('login');
-                  setIsOnboardingOpen(false);
-                }}
+                onClick={() => setIsOnboardingOpen(false)}
                 style={{ color: 'var(--text-tertiary)' }}
               >
-                Skip to Login
+                {onboardingStep === 0 ? 'Close' : 'Cancel'}
               </button>
             </div>
 
