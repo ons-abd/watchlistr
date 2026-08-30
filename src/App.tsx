@@ -252,7 +252,7 @@ function App() {
 
   // Guided Onboarding & Direct Login Wizard state
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
-  const [onboardingStep, setOnboardingStep] = useState(0); // 0 = Entry choices & Direct Auth; 1..4 = Guided Setup
+  const [onboardingStep, setOnboardingStep] = useState<number | 'expert'>(0); // 0 = Entry choice, 1..4 = Guided Setup, 'expert' = Direct Login Tabs
   const onboardingStepRef = useRef(onboardingStep);
   useEffect(() => {
     onboardingStepRef.current = onboardingStep;
@@ -588,7 +588,7 @@ function App() {
       setNostrUser(user);
       localStorage.setItem('watchlistr_nostr_user', JSON.stringify(user));
       setNostrConnectUri(null);
-      if (onboardingStepRef.current === 0) {
+      if (onboardingStepRef.current === 0 || onboardingStepRef.current === 'expert') {
         setIsOnboardingOpen(false);
       } else {
         setOnboardingStep(4);
@@ -1176,17 +1176,19 @@ function App() {
     }
   };
 
-  // Sync profile edit inputs when Connection modal or Onboarding Step 4 (Profile Setup) is active,
+  // Sync fetched profile metadata into profile edit state when modal is open
   // or when nostrUser.name / nostrUser.picture updates from relays asynchronously.
   useEffect(() => {
     const isEditingProfile = isConnectionModalOpen || (isOnboardingOpen && onboardingStep === 4);
     if (isEditingProfile && nostrUser) {
-      setProfileEditName(prev => prev || nostrUser.name || '');
-      if (!selectedImageFile) {
-        setProfileEditPicture(nostrUser.picture || '');
+      if (nostrUser.name) {
+        setProfileEditName(prev => prev || nostrUser.name || '');
+      }
+      if (nostrUser.picture && !selectedImageFile) {
+        setProfileEditPicture(prev => prev || nostrUser.picture || '');
       }
     }
-  }, [isConnectionModalOpen, isOnboardingOpen, onboardingStep, nostrUser, nostrUser?.name, nostrUser?.picture]);
+  }, [isConnectionModalOpen, isOnboardingOpen, onboardingStep, nostrUser, nostrUser?.name, nostrUser?.picture, selectedImageFile]);
 
   // Auto-advance onboarding to Step 4 (Profile Setup) when connected in Step 3
   useEffect(() => {
@@ -3723,11 +3725,15 @@ function App() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Sparkles size={20} style={{ color: 'var(--accent-color)' }} />
                 <h3 className="modal-title" style={{ margin: 0, fontSize: '1.2rem' }}>
-                  {onboardingStep === 0 ? 'Sign In to Watchlistr' : 'Nostr Setup Guide'}
+                  {onboardingStep === 0 ? 'Welcome to Watchlistr' : onboardingStep === 'expert' ? 'Sign In to Watchlistr' : 'Nostr Setup Guide'}
                 </h3>
                 {onboardingStep === 0 ? (
                   <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', backgroundColor: 'var(--bg-tertiary)', padding: '2px 8px', borderRadius: 'var(--radius-sm)' }}>
-                    Sign-In Options
+                    Sign In
+                  </span>
+                ) : onboardingStep === 'expert' ? (
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-color)', backgroundColor: 'var(--accent-color-light)', padding: '2px 8px', borderRadius: 'var(--radius-sm)' }}>
+                    Expert Mode
                   </span>
                 ) : (
                   <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-color)', backgroundColor: 'var(--accent-color-light)', padding: '2px 8px', borderRadius: 'var(--radius-sm)' }}>
@@ -3748,248 +3754,266 @@ function App() {
 
               {/* STEP 0: WELCOME & INITIAL METHOD SELECTION */}
               {onboardingStep === 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-
-                  {/* Choice A: New to Nostr Guided Setup */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', textAlign: 'center', alignItems: 'center', padding: '1rem 0.5rem' }}>
                   <div style={{
-                    backgroundColor: 'var(--bg-secondary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: '1.25rem',
+                    width: '52px',
+                    height: '52px',
+                    borderRadius: '50%',
+                    backgroundColor: 'var(--accent-color-light)',
                     display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.85rem'
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--accent-color)',
+                    marginBottom: '0.25rem'
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Sparkles size={20} style={{ color: 'var(--accent-color)' }} />
-                      <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>New to Nostr? Guided Setup</h4>
-                    </div>
-                    <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                      Watchlistr is built on Nostr — an open protocol where you own 100% of your watchlists. We'll guide you step-by-step to set up your mobile signer app.
-                    </p>
+                    <Sparkles size={28} />
+                  </div>
+
+                  <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    Welcome to Watchlistr! 🍿
+                  </div>
+
+                  <p style={{ margin: 0, fontSize: '0.92rem', color: 'var(--text-secondary)', lineHeight: 1.55, maxWidth: '420px' }}>
+                    Watchlistr is built on <strong>Nostr</strong> — an open network where you own 100% of your watchlists and profile. We'll guide you step-by-step to set up your mobile key manager.
+                  </p>
+
+                  <button
+                    className="btn btn-primary"
+                    style={{
+                      width: '100%',
+                      maxWidth: '360px',
+                      padding: '0.8rem 1.25rem',
+                      fontSize: '1rem',
+                      fontWeight: 700,
+                      justifyContent: 'center',
+                      marginTop: '0.5rem'
+                    }}
+                    onClick={() => {
+                      const dev = detectDeviceType();
+                      setOnboardingDesktopDevice(null);
+                      if (dev === 'android' || dev === 'ios') {
+                        setOnboardingStep(2);
+                      } else {
+                        setOnboardingStep(1);
+                      }
+                    }}
+                  >
+                    <Sparkles size={18} /> Help me set up an account →
+                  </button>
+
+                  {/* De-emphasized option for experienced users */}
+                  <div style={{ marginTop: '0.5rem' }}>
                     <button
-                      className="btn btn-primary"
-                      style={{ width: '100%', justifyContent: 'center', padding: '0.65rem 1rem', fontWeight: 700, marginTop: '0.25rem' }}
-                      onClick={() => {
-                        const dev = detectDeviceType();
-                        setOnboardingDesktopDevice(null);
-                        if (dev === 'android' || dev === 'ios') {
-                          setOnboardingStep(2);
-                        } else {
-                          setOnboardingStep(1);
-                        }
+                      type="button"
+                      className="btn"
+                      onClick={() => setOnboardingStep('expert')}
+                      style={{
+                        fontSize: '0.88rem',
+                        color: 'var(--text-secondary)',
+                        textDecoration: 'underline',
+                        border: 'none',
+                        backgroundColor: 'transparent',
+                        cursor: 'pointer',
+                        padding: '0.4rem 0.8rem'
                       }}
                     >
-                      <Sparkles size={16} /> Start Guided Setup →
+                      I can manage my Nostr connection
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* EXPERT MODE: DIRECT LOGIN TABS ONLY (NO GUIDED SETUP CLUTTER) */}
+              {onboardingStep === 'expert' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>Connect Your Nostr Account</div>
+                    <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                      Choose your preferred sign-in method below.
+                    </p>
+                  </div>
+
+                  {/* Direct Login Tabs */}
+                  <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+                    <button
+                      type="button"
+                      className={`btn btn-small ${directAuthTab === 'bunker' ? 'btn-primary' : 'btn-action-icon'}`}
+                      onClick={() => { setDirectAuthTab('bunker'); setBunkerError(null); }}
+                      style={{ flex: 1, justifyContent: 'center', padding: '0.5rem', fontSize: '0.85rem' }}
+                    >
+                      <Smartphone size={15} style={{ marginRight: '4px' }} /> Remote Signer
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn btn-small ${directAuthTab === 'extension' ? 'btn-primary' : 'btn-action-icon'}`}
+                      onClick={() => { setDirectAuthTab('extension'); setBunkerError(null); }}
+                      style={{ flex: 1, justifyContent: 'center', padding: '0.5rem', fontSize: '0.85rem' }}
+                    >
+                      <Check size={15} style={{ marginRight: '4px' }} /> Extension
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn btn-small ${directAuthTab === 'readonly' ? 'btn-primary' : 'btn-action-icon'}`}
+                      onClick={() => { setDirectAuthTab('readonly'); setBunkerError(null); }}
+                      style={{ flex: 1, justifyContent: 'center', padding: '0.5rem', fontSize: '0.85rem' }}
+                    >
+                      <User size={15} style={{ marginRight: '4px' }} /> Read-Only
                     </button>
                   </div>
 
-                  {/* Divider */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--border-color)' }}></div>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      or choose login type
-                    </span>
-                    <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--border-color)' }}></div>
-                  </div>
+                  {/* Tab 1: Remote Signer (NIP-46) */}
+                  {directAuthTab === 'bunker' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                        Connect securely via Amber, Clave, Nsec.app, or any NIP-46 remote signer app.
+                      </p>
 
-                  {/* Choice B: Direct Login Options */}
-                  <div style={{
-                    backgroundColor: 'var(--bg-secondary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: '1.25rem',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '1rem'
-                  }}>
-                    <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      Existing Nostr User
-                    </div>
-
-                    {/* Login Tabs */}
-                    <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
-                      <button
-                        type="button"
-                        className={`btn btn-small ${directAuthTab === 'bunker' ? 'btn-primary' : 'btn-action-icon'}`}
-                        onClick={() => setDirectAuthTab('bunker')}
-                        style={{ flex: 1, justifyContent: 'center', padding: '0.4rem 0.5rem', fontSize: '0.82rem' }}
-                      >
-                        <Smartphone size={14} style={{ marginRight: '4px' }} /> Remote Signer
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn btn-small ${directAuthTab === 'extension' ? 'btn-primary' : 'btn-action-icon'}`}
-                        onClick={() => setDirectAuthTab('extension')}
-                        style={{ flex: 1, justifyContent: 'center', padding: '0.4rem 0.5rem', fontSize: '0.82rem' }}
-                      >
-                        <Check size={14} style={{ marginRight: '4px' }} /> Extension
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn btn-small ${directAuthTab === 'readonly' ? 'btn-primary' : 'btn-action-icon'}`}
-                        onClick={() => setDirectAuthTab('readonly')}
-                        style={{ flex: 1, justifyContent: 'center', padding: '0.4rem 0.5rem', fontSize: '0.82rem' }}
-                      >
-                        <User size={14} style={{ marginRight: '4px' }} /> Read-Only
-                      </button>
-                    </div>
-
-                    {/* Tab 1: Remote Signer (NIP-46) */}
-                    {directAuthTab === 'bunker' && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                        <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                          Connect using a remote signer app (Amber, Clave, Nsec.app).
-                        </p>
-
-                        <div style={{ display: 'flex', gap: '8px', backgroundColor: 'var(--bg-tertiary)', padding: '4px', borderRadius: 'var(--radius-md)' }}>
-                          <button
-                            type="button"
-                            className={`btn ${bunkerConnectMode === 'qr' ? 'btn-primary' : 'btn-action-icon'}`}
-                            onClick={() => { setBunkerConnectMode('qr'); handleStartNostrConnect(); }}
-                            style={{ flex: 1, justifyContent: 'center', padding: '0.35rem 0.5rem', fontSize: '0.8rem' }}
-                          >
-                            Pair App / QR
-                          </button>
-                          <button
-                            type="button"
-                            className={`btn ${bunkerConnectMode === 'manual' ? 'btn-primary' : 'btn-action-icon'}`}
-                            onClick={() => setBunkerConnectMode('manual')}
-                            style={{ flex: 1, justifyContent: 'center', padding: '0.35rem 0.5rem', fontSize: '0.8rem' }}
-                          >
-                            Paste Bunker URI
-                          </button>
-                        </div>
-
-                        {bunkerConnectMode === 'qr' ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem', width: '100%', padding: '0.25rem 0' }}>
-                            {nostrConnectUri ? (
-                              <>
-                                <div style={{ backgroundColor: '#ffffff', padding: '10px', borderRadius: 'var(--radius-md)', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
-                                  <img
-                                    src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(nostrConnectUri)}`}
-                                    alt="Nostr Connect QR Code"
-                                    width={160}
-                                    height={160}
-                                    style={{ display: 'block' }}
-                                  />
-                                </div>
-
-                                <a
-                                  href={nostrConnectUri}
-                                  className="btn btn-primary"
-                                  style={{ width: '100%', justifyContent: 'center', padding: '0.6rem', color: '#ffffff', textDecoration: 'none', fontWeight: 700 }}
-                                >
-                                  Open in Remote Signer App
-                                </a>
-
-                                {authChallengeUrl && (
-                                  <a
-                                    href={authChallengeUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="btn btn-primary"
-                                    style={{ width: '100%', justifyContent: 'center', padding: '0.6rem', backgroundColor: '#e11d48' }}
-                                  >
-                                    Complete Auth Challenge in Browser
-                                  </a>
-                                )}
-
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--accent-color)' }}>
-                                  <RefreshCw size={14} className="spin" /> Waiting for remote authorization...
-                                </div>
-                              </>
-                            ) : (
-                              <button
-                                type="button"
-                                className="btn btn-primary"
-                                onClick={handleStartNostrConnect}
-                                disabled={isNostrConnectListening}
-                                style={{ width: '100%', justifyContent: 'center', padding: '0.65rem', fontWeight: 700 }}
-                              >
-                                {isNostrConnectListening ? 'Generating pairing connection...' : 'Start Nostr Connect Pairing'}
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <form onSubmit={(e) => { e.preventDefault(); handleDirectBunkerManualLogin(bunkerInputUrl); }} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                            <input
-                              type="text"
-                              className="input-field"
-                              placeholder="bunker://... or npub1...#bunker=..."
-                              value={bunkerInputUrl}
-                              onChange={(e) => setBunkerInputUrl(e.target.value)}
-                              required
-                            />
-                            <button
-                              type="submit"
-                              className="btn btn-primary"
-                              disabled={bunkerConnecting}
-                              style={{ width: '100%', justifyContent: 'center', padding: '0.65rem' }}
-                            >
-                              {bunkerConnecting ? 'Connecting...' : 'Connect Bunker'}
-                            </button>
-                          </form>
-                        )}
-
-                        {bunkerError && (
-                          <div style={{ color: '#ef4444', fontSize: '0.82rem', textAlign: 'center', backgroundColor: 'rgba(239,68,68,0.1)', padding: '6px 10px', borderRadius: 'var(--radius-sm)' }}>
-                            {bunkerError}
-                          </div>
-                        )}
+                      <div style={{ display: 'flex', gap: '8px', backgroundColor: 'var(--bg-tertiary)', padding: '4px', borderRadius: 'var(--radius-md)' }}>
+                        <button
+                          type="button"
+                          className={`btn ${bunkerConnectMode === 'qr' ? 'btn-primary' : 'btn-action-icon'}`}
+                          onClick={() => { setBunkerConnectMode('qr'); handleStartNostrConnect(); }}
+                          style={{ flex: 1, justifyContent: 'center', padding: '0.4rem 0.5rem', fontSize: '0.82rem' }}
+                        >
+                          Pair App / QR
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn ${bunkerConnectMode === 'manual' ? 'btn-primary' : 'btn-action-icon'}`}
+                          onClick={() => setBunkerConnectMode('manual')}
+                          style={{ flex: 1, justifyContent: 'center', padding: '0.4rem 0.5rem', fontSize: '0.82rem' }}
+                        >
+                          Paste Bunker URI
+                        </button>
                       </div>
-                    )}
 
-                    {/* Tab 2: Extension (NIP-07) */}
-                    {directAuthTab === 'extension' && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', textAlign: 'center' }}>
-                        {hasNostrExtension ? (
-                          <>
-                            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                              Detected NIP-07 extension (Alby, nos2x). Click below to sign in.
-                            </p>
+                      {bunkerConnectMode === 'qr' ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.85rem', width: '100%', padding: '0.25rem 0' }}>
+                          {nostrConnectUri ? (
+                            <>
+                              <div style={{ backgroundColor: '#ffffff', padding: '12px', borderRadius: 'var(--radius-md)', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+                                <img
+                                  src={`https://api.qrserver.com/v1/create-qr-code/?size=170x170&data=${encodeURIComponent(nostrConnectUri)}`}
+                                  alt="Nostr Connect QR Code"
+                                  width={170}
+                                  height={170}
+                                  style={{ display: 'block' }}
+                                />
+                              </div>
+
+                              <a
+                                href={nostrConnectUri}
+                                className="btn btn-primary"
+                                style={{ width: '100%', justifyContent: 'center', padding: '0.7rem', color: '#ffffff', textDecoration: 'none', fontWeight: 700 }}
+                              >
+                                Open in Remote Signer App
+                              </a>
+
+                              {authChallengeUrl && (
+                                <a
+                                  href={authChallengeUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="btn btn-primary"
+                                  style={{ width: '100%', justifyContent: 'center', padding: '0.7rem', backgroundColor: '#e11d48' }}
+                                >
+                                  Complete Auth Challenge in Browser
+                                </a>
+                              )}
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: 'var(--accent-color)' }}>
+                                <RefreshCw size={14} className="spin" /> Waiting for remote authorization...
+                              </div>
+                            </>
+                          ) : (
                             <button
                               type="button"
                               className="btn btn-primary"
-                              onClick={handleDirectExtensionLogin}
-                              style={{ width: '100%', justifyContent: 'center', padding: '0.65rem', fontWeight: 700 }}
+                              onClick={handleStartNostrConnect}
+                              disabled={isNostrConnectListening}
+                              style={{ width: '100%', justifyContent: 'center', padding: '0.75rem', fontWeight: 700 }}
                             >
-                              Sign In with Extension (NIP-07)
+                              {isNostrConnectListening ? 'Generating pairing connection...' : 'Start Nostr Connect Pairing'}
                             </button>
-                          </>
-                        ) : (
-                          <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                            No browser extension detected. Install <a href="https://getalby.com" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-color)' }}>Alby</a> or <a href="https://github.com/fiatjaf/nos2x" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-color)' }}>nos2x</a>, or use <strong>Remote Signer</strong> option!
+                          )}
+                        </div>
+                      ) : (
+                        <form onSubmit={(e) => { e.preventDefault(); handleDirectBunkerManualLogin(bunkerInputUrl); }} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                          <input
+                            type="text"
+                            className="input-field"
+                            placeholder="bunker://... or npub1...#bunker=..."
+                            value={bunkerInputUrl}
+                            onChange={(e) => setBunkerInputUrl(e.target.value)}
+                            required
+                          />
+                          <button
+                            type="submit"
+                            className="btn btn-primary"
+                            disabled={bunkerConnecting}
+                            style={{ width: '100%', justifyContent: 'center', padding: '0.7rem' }}
+                          >
+                            {bunkerConnecting ? 'Connecting...' : 'Connect Bunker'}
+                          </button>
+                        </form>
+                      )}
+
+                      {bunkerError && (
+                        <div style={{ color: '#ef4444', fontSize: '0.85rem', textAlign: 'center', backgroundColor: 'rgba(239,68,68,0.1)', padding: '8px 12px', borderRadius: 'var(--radius-sm)' }}>
+                          {bunkerError}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Tab 2: Extension (NIP-07) */}
+                  {directAuthTab === 'extension' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', textAlign: 'center' }}>
+                      {hasNostrExtension ? (
+                        <>
+                          <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
+                            NIP-07 browser extension detected (Alby, nos2x). Click below to sign in instantly.
                           </p>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Tab 3: Read-Only Mode */}
-                    {directAuthTab === 'readonly' && (
-                      <form onSubmit={(e) => { e.preventDefault(); handleDirectReadOnlyLogin(readOnlyInputKey); }} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                        <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                          Enter any Nostr public key or npub to view their watchlists:
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            onClick={handleDirectExtensionLogin}
+                            style={{ width: '100%', justifyContent: 'center', padding: '0.75rem', fontWeight: 700 }}
+                          >
+                            Sign In with Extension (NIP-07)
+                          </button>
+                        </>
+                      ) : (
+                        <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                          No browser extension detected. Install <a href="https://getalby.com" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-color)' }}>Alby</a> or <a href="https://github.com/fiatjaf/nos2x" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-color)' }}>nos2x</a>, or use the <strong>Remote Signer</strong> option for mobile!
                         </p>
-                        <input
-                          type="text"
-                          className="input-field"
-                          placeholder="npub1... or hex public key"
-                          value={readOnlyInputKey}
-                          onChange={(e) => setReadOnlyInputKey(e.target.value)}
-                          required
-                        />
-                        <button
-                          type="submit"
-                          className="btn btn-primary"
-                          style={{ width: '100%', justifyContent: 'center', padding: '0.65rem' }}
-                        >
-                          Connect Read-Only Mode
-                        </button>
-                      </form>
-                    )}
-                  </div>
+                      )}
+                    </div>
+                  )}
 
+                  {/* Tab 3: Read-Only Mode */}
+                  {directAuthTab === 'readonly' && (
+                    <form onSubmit={(e) => { e.preventDefault(); handleDirectReadOnlyLogin(readOnlyInputKey); }} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                        Enter any Nostr public key or npub to view their watchlists in read-only mode:
+                      </p>
+                      <input
+                        type="text"
+                        className="input-field"
+                        placeholder="npub1... or hex public key"
+                        value={readOnlyInputKey}
+                        onChange={(e) => setReadOnlyInputKey(e.target.value)}
+                        required
+                      />
+                      <button
+                        type="submit"
+                        className="btn btn-primary"
+                        style={{ width: '100%', justifyContent: 'center', padding: '0.7rem' }}
+                      >
+                        Connect Read-Only Mode
+                      </button>
+                    </form>
+                  )}
                 </div>
               )}
 
@@ -4320,6 +4344,21 @@ function App() {
                             }}
                           />
                         </div>
+                      ) : (profileEditPicture || nostrUser?.picture) ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                          <img
+                            src={profileEditPicture || nostrUser?.picture}
+                            alt="Profile Avatar"
+                            style={{
+                              width: '90px',
+                              height: '90px',
+                              borderRadius: '50%',
+                              objectFit: 'cover',
+                              border: '3px solid var(--accent-color)',
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+                            }}
+                          />
+                        </div>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
                           <Upload size={24} style={{ color: 'var(--text-tertiary)' }} />
@@ -4430,10 +4469,17 @@ function App() {
 
             {/* Wizard Navigation Footer */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem', marginTop: '0.5rem' }}>
-              {onboardingStep > 0 ? (
+              {onboardingStep === 'expert' ? (
                 <button
                   className="btn btn-small"
-                  onClick={() => setOnboardingStep(prev => (prev === 1 ? 0 : prev - 1))}
+                  onClick={() => setOnboardingStep(0)}
+                >
+                  ← Back to Setup Guide
+                </button>
+              ) : typeof onboardingStep === 'number' && onboardingStep > 0 ? (
+                <button
+                  className="btn btn-small"
+                  onClick={() => setOnboardingStep(prev => (typeof prev === 'number' && prev === 1 ? 0 : (prev as number) - 1))}
                 >
                   ← Back
                 </button>
