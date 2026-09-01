@@ -2333,38 +2333,51 @@ function App() {
         <div className="workspace-container">
           <div className="workspace-nav-bar">
             <button className="btn" onClick={() => setSelectedListId(null)}>
-              <ArrowLeft size={16} /> Back to My Lists
+              <ArrowLeft size={16} /> Back to Lists
             </button>
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '0.35rem 0.75rem',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--border-color)',
-                backgroundColor: 'var(--bg-primary)',
-                fontSize: '0.85rem'
-              }}
-            >
-              {nostrUser?.picture && (
-                <img
-                  src={nostrUser.picture}
-                  alt="Avatar"
-                  style={{ width: '20px', height: '20px', borderRadius: '50%', objectFit: 'cover' }}
-                />
-              )}
-              <span style={{ fontWeight: 600 }}>
-                {nostrUser?.name || (nostrUser ? `${nostrUser.pubkey.substring(0, 8)}...` : '')}
-              </span>
-              <button
-                className="btn btn-small"
-                onClick={logoutNostr}
-                style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', marginLeft: '4px' }}
+            {nostrUser ? (
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '0.35rem 0.75rem',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border-color)',
+                  backgroundColor: 'var(--bg-primary)',
+                  fontSize: '0.85rem'
+                }}
               >
-                Disconnect
+                {nostrUser.picture && (
+                  <img
+                    src={nostrUser.picture}
+                    alt="Avatar"
+                    style={{ width: '20px', height: '20px', borderRadius: '50%', objectFit: 'cover' }}
+                  />
+                )}
+                <span style={{ fontWeight: 600 }}>
+                  {nostrUser.name || `${nostrUser.pubkey.substring(0, 8)}...${nostrUser.pubkey.substring(nostrUser.pubkey.length - 4)}`}
+                </span>
+                <button
+                  className="btn btn-small"
+                  onClick={logoutNostr}
+                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', marginLeft: '4px' }}
+                >
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <button
+                className="btn btn-primary btn-small"
+                onClick={() => {
+                  setOnboardingStep(0);
+                  setIsOnboardingOpen(true);
+                }}
+                style={{ fontWeight: 700, padding: '0.35rem 0.85rem', fontSize: '0.85rem' }}
+              >
+                <LogIn size={15} /> Log in
               </button>
-            </div>
+            )}
           </div>
 
           {/* List Workspace Header */}
