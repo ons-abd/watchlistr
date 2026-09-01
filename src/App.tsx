@@ -25,7 +25,9 @@ import {
   Upload,
   Sparkles,
   Download,
-  LogIn
+  LogIn,
+  ChevronDown,
+  ArrowUpDown
 } from 'lucide-react';
 import {
   NostrService,
@@ -218,6 +220,32 @@ function App() {
 
   const activeWatched = lists.find(x => x.id === activeWatchedId) || { items: [] };
   const watchedList = activeWatched.items;
+
+  // Media type filter for current workspace list ('movie', 'tv', or null for all)
+  const [mediaTypeFilter, setMediaTypeFilter] = useState<'movie' | 'tv' | null>(null);
+  // Media sort order for watched lists ('recent', 'oldest', 'rating', 'lowest', or null for default)
+  const [mediaSortOrder, setMediaSortOrder] = useState<'recent' | 'oldest' | 'rating' | 'lowest' | null>(null);
+  const [isSortModalOpen, setIsSortModalOpen] = useState<boolean>(false);
+  const sortMenuRef = useRef<HTMLDivElement | null>(null);
+
+  // Close sort popover when clicking outside
+  useEffect(() => {
+    if (!isSortModalOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (sortMenuRef.current && !sortMenuRef.current.contains(e.target as Node)) {
+        setIsSortModalOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isSortModalOpen]);
+
+  // Reset media type filter and sort order whenever opening or switching between lists
+  useEffect(() => {
+    setMediaTypeFilter(null);
+    setMediaSortOrder(null);
+    setIsSortModalOpen(false);
+  }, [selectedListId]);
 
   // Social & Follows & Explore state
   const [activeHubTab, setActiveHubTab] = useState<'my-lists' | 'explore' | 'following'>('explore');
@@ -2415,33 +2443,192 @@ function App() {
                 )}
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {currentList.items.map(item => (
-                  <div key={item.id} className="media-card" style={{ display: 'flex', alignItems: 'center', padding: '0.85rem 1rem' }}>
-                    <div
-                      className="poster-container"
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => openDetailsModal(item)}
-                    >
-                      {item.poster ? (
-                        <img src={item.poster} alt={item.title} className="poster-img" />
-                      ) : (
-                        <div className="media-placeholder-icon">
-                          {item.type === 'movie' ? <Film size={24} /> : <Tv size={24} />}
-                        </div>
-                      )}
-                    </div>
+              <div>
+                {/* Media Filter & Sort Toolbar */}
+                {(() => {
+                  const movieCount = currentList.items.filter(x => x.type === 'movie').length;
+                  const tvCount = currentList.items.filter(x => x.type === 'tv').length;
+                  
+                  // 1. Filter by Type
+                  let processedItems = currentList.items.filter(item => {
+                    if (mediaTypeFilter === 'movie') return item.type === 'movie';
+                    if (mediaTypeFilter === 'tv') return item.type === 'tv';
+                    return true;
+                  });
 
-                    <div className="media-info" style={{ flex: 1, minWidth: 0, paddingLeft: '1rem', overflow: 'hidden' }}>
-                      <div className="media-header">
-                        <span
-                          className="media-title clickable"
-                          onClick={() => openDetailsModal(item)}
-                          title={item.title}
-                        >
-                          {item.title}
-                        </span>
+                  // 2. Sort by selected order
+                  if (mediaSortOrder === 'recent') {
+                    processedItems = [...processedItems].sort((a, b) => {
+                      const dateA = a.watchedDate || '';
+                      const dateB = b.watchedDate || '';
+                      if (dateA && dateB) return dateB.localeCompare(dateA);
+                      if (dateA && !dateB) return -1;
+                      if (!dateA && dateB) return 1;
+
+                      const yearA = parseInt(a.year, 10) || 0;
+                      const yearB = parseInt(b.year, 10) || 0;
+                      return yearB - yearA;
+                    });
+                  } else if (mediaSortOrder === 'oldest') {
+                    processedItems = [...processedItems].sort((a, b) => {
+                      const dateA = a.watchedDate || '';
+                      const dateB = b.watchedDate || '';
+                      if (dateA && dateB) return dateA.localeCompare(dateB);
+                      if (dateA && !dateB) return -1;
+                      if (!dateA && dateB) return 1;
+
+                      const yearA = parseInt(a.year, 10) || 0;
+                      const yearB = parseInt(b.year, 10) || 0;
+                      return yearA - yearB;
+                    });
+                  } else if (mediaSortOrder === 'rating') {
+                    processedItems = [...processedItems].sort((a, b) => {
+                      const ratingA = a.userRating !== undefined ? a.userRating : -1;
+                      const ratingB = b.userRating !== undefined ? b.userRating : -1;
+                      return ratingB - ratingA;
+                    });
+                  } else if (mediaSortOrder === 'lowest') {
+                    processedItems = [...processedItems].sort((a, b) => {
+                      const ratingA = a.userRating !== undefined ? a.userRating : 999;
+                      const ratingB = b.userRating !== undefined ? b.userRating : 999;
+                      return ratingA - ratingB;
+                    });
+                  }
+
+                  return (
+                    <>
+                      <div className="media-toolbar-row">
+                        {/* Left: Type Filter Chips */}
+                        <div className="filter-chips-group">
+                          <button
+                            type="button"
+                            className={`chip-pill ${mediaTypeFilter === 'movie' ? 'active' : ''}`}
+                            onClick={() => setMediaTypeFilter(prev => prev === 'movie' ? null : 'movie')}
+                            title="Filter by movies"
+                          >
+                            <Film size={13} />
+                            <span>Movies</span>
+                            <span className="chip-count">{movieCount}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className={`chip-pill ${mediaTypeFilter === 'tv' ? 'active' : ''}`}
+                            onClick={() => setMediaTypeFilter(prev => prev === 'tv' ? null : 'tv')}
+                            title="Filter by TV shows"
+                          >
+                            <Tv size={13} />
+                            <span className="chip-label-full">TV Shows</span>
+                            <span className="chip-label-short">TV</span>
+                            <span className="chip-count">{tvCount}</span>
+                          </button>
+                        </div>
+
+                        {/* Right: Ultra-Compact Dynamic Sort Popover Button (Watched List Only) */}
+                        {currentList.type === 'watched' && (
+                          <div className="sort-menu-container" ref={sortMenuRef}>
+                            <button
+                              type="button"
+                              className={`sort-dropdown-wrapper ${mediaSortOrder ? 'active' : ''}`}
+                              onClick={() => setIsSortModalOpen(prev => !prev)}
+                              title="Sort watched list"
+                            >
+                              {!mediaSortOrder && <ArrowUpDown size={12} className="sort-icon" />}
+                              <span className="sort-label">
+                                {mediaSortOrder === 'recent'
+                                  ? 'Newest'
+                                  : mediaSortOrder === 'oldest'
+                                    ? 'Oldest'
+                                    : mediaSortOrder === 'rating'
+                                      ? 'Highest'
+                                      : mediaSortOrder === 'lowest'
+                                        ? 'Lowest'
+                                        : 'Sort'}
+                              </span>
+                              <ChevronDown size={11} className="sort-chevron" />
+                            </button>
+
+                            {isSortModalOpen && (
+                              <div className="sort-popover-backdrop" onClick={() => setIsSortModalOpen(false)}>
+                                <div className="sort-popover-menu" onClick={(e) => e.stopPropagation()}>
+                                  <div className="filter-section">
+                                    <div className="sort-popover-list">
+                                      {[
+                                        { value: null, label: 'Default' },
+                                        { value: 'recent', label: 'Newest First' },
+                                        { value: 'oldest', label: 'Oldest First' },
+                                        { value: 'rating', label: 'Highest Rated' },
+                                        { value: 'lowest', label: 'Lowest Rated' }
+                                      ].map((opt) => {
+                                        const isSelected = mediaSortOrder === opt.value;
+                                        return (
+                                          <button
+                                            key={opt.label}
+                                            type="button"
+                                            className={`sort-option-item ${isSelected ? 'active' : ''}`}
+                                            onClick={() => {
+                                              setMediaSortOrder(opt.value as any);
+                                              setIsSortModalOpen(false);
+                                            }}
+                                          >
+                                            <span>{opt.label}</span>
+                                            {isSelected && <Check size={13} className="sort-option-check" />}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
+
+                      {processedItems.length === 0 ? (
+                        <div className="empty-state" style={{ padding: '2.5rem 1rem', textAlign: 'center' }}>
+                          {mediaTypeFilter === 'movie' ? <Film size={36} style={{ color: 'var(--text-tertiary)', marginBottom: '0.5rem' }} /> : <Tv size={36} style={{ color: 'var(--text-tertiary)', marginBottom: '0.5rem' }} />}
+                          <h4 style={{ margin: '0 0 0.25rem 0', fontSize: '1.05rem', fontWeight: 700 }}>
+                            No {mediaTypeFilter === 'movie' ? 'movies' : 'TV shows'} in this list
+                          </h4>
+                          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                            This list does not currently have any {mediaTypeFilter === 'movie' ? 'movies' : 'TV shows'}.
+                          </p>
+                          <button className="btn btn-small" onClick={() => setMediaTypeFilter(null)}>
+                            Show All Items ({currentList.items.length})
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                          {processedItems.map(item => (
+                            <div key={item.id} className="media-card" style={{ display: 'flex', alignItems: 'center', padding: '0.85rem 1rem' }}>
+                              <div
+                                className="poster-container"
+                                style={{ cursor: 'pointer' }}
+                                onClick={() => openDetailsModal(item)}
+                              >
+                                {item.poster ? (
+                                  <img src={item.poster} alt={item.title} className="poster-img" />
+                                ) : (
+                                  <div className="media-placeholder-icon">
+                                    {item.type === 'movie' ? <Film size={24} /> : <Tv size={24} />}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="media-info" style={{ flex: 1, minWidth: 0, paddingLeft: '1rem', overflow: 'hidden' }}>
+                                <div className="media-header">
+                                  <span
+                                    className="media-title clickable"
+                                    onClick={() => openDetailsModal(item)}
+                                    title={item.title}
+                                  >
+                                    {item.title}
+                                  </span>
+                                  <span className={`media-type-badge ${item.type}`}>
+                                    {item.type === 'movie' ? <Film size={11} /> : <Tv size={11} />}
+                                    <span>{item.type === 'movie' ? 'Movie' : 'TV'}</span>
+                                  </span>
+                                </div>
 
                       {renderDirectorCreator(item)}
 
@@ -2515,6 +2702,11 @@ function App() {
                 ))}
               </div>
             )}
+                    </>
+                  );
+                })()}
+              </div>
+            )}
           </div>
 
           {/* Search Modal Popup */}
@@ -2573,6 +2765,10 @@ function App() {
                               <div className="media-header">
                                 <span className="media-title clickable" onClick={() => openDetailsModal(item)} title={item.title}>
                                   {item.title}
+                                </span>
+                                <span className={`media-type-badge ${item.type}`}>
+                                  {item.type === 'movie' ? <Film size={11} /> : <Tv size={11} />}
+                                  <span>{item.type === 'movie' ? 'Movie' : 'TV'}</span>
                                 </span>
                               </div>
                               {renderDirectorCreator(item)}
